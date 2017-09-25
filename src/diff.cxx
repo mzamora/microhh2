@@ -25,6 +25,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 #include "grid.h"
 #include "fields.h"

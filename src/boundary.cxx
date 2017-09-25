@@ -23,6 +23,8 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
+
 #include "master.h"
 #include "input.h"
 #include "grid.h"
@@ -107,7 +109,8 @@ void Boundary<TF>::process_bcs(Input& input)
     // read the boundaries per field
     for (auto& it : fields.sp)
     {
-        sbc.emplace(it.first, Field3dBc());
+        //sbc.emplace(it.first, Field3dBc());
+        sbc[it.first] = Field3dBc();
         swbot = input.get_item<std::string>("boundary", "sbcbot", it.first);
         swtop = input.get_item<std::string>("boundary", "sbctop", it.first);
         sbc.at(it.first).bot = input.get_item<double>("boundary", "sbot", it.first);

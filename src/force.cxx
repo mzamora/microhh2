@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <iostream>
 #include <math.h>
+#include <stdexcept>
+
 #include "master.h"
 #include "grid.h"
 #include "fields.h"

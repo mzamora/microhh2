@@ -107,7 +107,7 @@ Data_block::Data_block(Master& master, const std::string& file_name) : master(ma
         if (strings.size() != number_of_vectors)
         {
             std::string error_string = "Illegal number of items on line ";
-            error_string += std::to_string(line_number);
+            error_string += std::to_string(static_cast<long long>(line_number));
             throw std::runtime_error(error_string);
         }
 

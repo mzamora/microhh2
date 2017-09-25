@@ -23,6 +23,8 @@
 #include <string>
 #include <cstdio>
 #include <algorithm>
+#include <stdexcept>
+
 #include "master.h"
 #include "input.h"
 #include "grid.h"

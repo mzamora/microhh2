@@ -21,6 +21,8 @@
  */
 
 #include <memory>
+#include <stdexcept>
+
 #include "grid.h"
 #include "fields.h"
 #include "defines.h"

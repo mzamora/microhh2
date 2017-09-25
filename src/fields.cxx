@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iostream>
+#include <stdexcept>
 
 #include "master.h"
 #include "grid.h"
@@ -345,7 +346,9 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name)
     stats.calc_mean(m.profs["w"].data.data(), mp["w"]->data.data(), no_offset, atmp["tmp4"]->data.data(), stats.nmaskh.data());
     for (int n=2; n<5; ++n)
     {
-        std::string sn = std::to_string(n);
+        // BvS: the cast to long long is unfortunately necessary for Intel compilers
+        // which don't seem to have the full c++11 implementation
+        std::string sn = std::to_string(static_cast<long long>(n));
         stats.calc_moment(mp["w"]->data.data(), m.profs["w"].data.data(), m.profs["w"+sn].data.data(), n, atmp["tmp4"]->data.data(), stats.nmaskh.data());
     }
 
@@ -357,7 +360,9 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name)
 
     for (int n=2; n<5; ++n)
     {
-        std::string sn = std::to_string(n);
+        // BvS: the cast to long long is unfortunately necessary for Intel compilers
+        // which don't seem to have the full c++11 implementation
+        std::string sn = std::to_string(static_cast<long long>(n));
         stats.calc_moment(mp["u"]->data.data(), umodel.data(), m.profs["u"+sn].data.data(), n, atmp["tmp1"]->data.data(), stats.nmask.data());
     }
 
@@ -397,7 +402,9 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name)
 
     for (int n=2; n<5; ++n)
     {
-        std::string sn = std::to_string(n);
+        // BvS: the cast to long long is unfortunately necessary for Intel compilers
+        // which don't seem to have the full c++11 implementation
+        std::string sn = std::to_string(static_cast<long long>(n));
         stats.calc_moment(mp["v"]->data.data(), vmodel.data(), m.profs["v"+sn].data.data(), n, atmp["tmp1"]->data.data(), stats.nmask.data());
     }
 
@@ -435,7 +442,10 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name)
 
         for (int n=2; n<5; ++n)
         {
-            std::string sn = std::to_string(n);
+            // BvS: the cast to long long is unfortunately necessary for Intel compilers
+            // which don't seem to have the full c++11 implementation
+            std::string sn = std::to_string(static_cast<long long>(n));
+
             stats.calc_moment(it.second->data.data(), m.profs[it.first].data.data(), m.profs[it.first+sn].data.data(), n, atmp["tmp3"]->data.data(), stats.nmask.data());
         }
 
@@ -805,7 +815,7 @@ void Fields<TF>::create_stats(Stats<TF>& stats)
         // Add the second up to fourth moments of the velocity and scalars
         for (int n=2; n<5; ++n)
         {
-            std::string sn = std::to_string(n);
+            std::string sn = std::to_string(static_cast<long long>(n));
             //std::stringstream ss;
             //ss << n;
             //std::string sn = ss.str();
