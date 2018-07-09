@@ -29,6 +29,7 @@
 #include "grid.h"
 #include "fields.h"
 #include "thermo_vapor.h"
+#include "advec.h"
 #include "diff_smag2.h"
 #include "defines.h"
 #include "constants.h"
@@ -750,8 +751,18 @@ void Thermo_vapor<TF>::exec_stats(
 
     auto tmp = fields.get_tmp();
     stats.calc_grad_2nd(b->fld.data(), m.profs["bgrad"].data.data(), gd.dzhi.data(), mask_fieldh.fld.data(), stats.nmaskh.data());
-    stats.calc_flux_2nd(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
-                        m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+
+    if (advec.get_switch() == Advection_type::Advec_2i3)
+    {
+        stats.calc_flux_2i3(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
+                            m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+    }
+    else
+    {
+        stats.calc_flux_2nd(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
+                            m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+    }
+
     if (diff.get_switch() == Diffusion_type::Diff_smag2)
     {
         stats.calc_diff_2nd(b->fld.data(), fields.mp["w"]->fld.data(), fields.sd["evisc"]->fld.data(),
