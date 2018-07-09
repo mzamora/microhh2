@@ -956,7 +956,83 @@ void Stats<TF>::calc_flux_2nd(TF* restrict data, TF* restrict fld_mean, TF* rest
     }
 
     master.sum(prof, gd.kcells);
+}
 
+template<typename TF>
+void Stats<TF>::calc_flux_2i3(TF* restrict data, TF* restrict fld_mean, TF* restrict w, TF* restrict wmean,
+                              TF* restrict prof, TF* restrict tmp1, const int loc[3],
+                              TF* restrict mask, int* restrict nmask)
+{
+    using namespace Finite_difference::O4;
+
+    auto& gd = grid.get_grid_data();
+    const int kk1 = 1*gd.ijcells;
+    const int kk2 = 2*gd.ijcells;
+
+    // set a pointer to the field that contains w, either interpolated or the original
+    TF* restrict calcw = w;
+
+    // define the locations
+    const int wloc [3] = {0,0,1};
+    const int uwloc[3] = {1,0,1};
+    const int vwloc[3] = {0,1,1};
+
+    if (loc[0] == 1)
+    {
+        grid.interpolate_2nd(tmp1, w, wloc, uwloc);
+        calcw = tmp1;
+    }
+    else if (loc[1] == 1)
+    {
+        grid.interpolate_2nd(tmp1, w, wloc, vwloc);
+        calcw = tmp1;
+    }
+
+    // BCs.
+    std::vector<int> ks = {gd.kstart, gd.kstart+1, gd.kend-1, gd.kend};
+    for (int k : ks)
+    {
+        if (nmask[k] > nthres && fld_mean[k-1] != netcdf_fp_fillvalue<TF>() && fld_mean[k] != netcdf_fp_fillvalue<TF>())
+        {
+            prof[k] = 0.;
+            for (int j=gd.jstart; j<gd.jend; ++j)
+                #pragma ivdep
+                for (int i=gd.istart; i<gd.iend; ++i)
+                {
+                    const int ijk  = i + j*gd.icells + k*kk1;
+                    prof[k] += mask[ijk]*(0.5*(data[ijk-kk1]+data[ijk])-0.5*(fld_mean[k-1]+fld_mean[k]))*(calcw[ijk]-wmean[k]);
+                }
+            prof[k] /= static_cast<TF>(nmask[k]);
+        }
+        else
+            prof[k] = netcdf_fp_fillvalue<TF>();
+    }
+
+    // Interior.
+    #pragma omp parallel for
+    for (int k=gd.kstart+2; k<gd.kend-1; ++k)
+    {
+        if (nmask[k] > nthres && fld_mean[k-1] != netcdf_fp_fillvalue<TF>() && fld_mean[k] != netcdf_fp_fillvalue<TF>())
+        {
+            prof[k] = 0.;
+            for (int j=gd.jstart; j<gd.jend; ++j)
+                #pragma ivdep
+                for (int i=gd.istart; i<gd.iend; ++i)
+                {
+                    const int ijk  = i + j*gd.icells + k*kk1;
+                    prof[k] += mask[ijk]* (
+                               // (calcw[ijk]-wmean[k])          * interp4_ws(data[ijk-kk2]-fld_mean[k-2], data[ijk-kk1]-fld_mean[k-1], data[ijk]-fld_mean[k], data[ijk+kk1]-fld_mean[k+1])
+                               // -std::abs(calcw[ijk]-wmean[k]) * interp3_ws(data[ijk-kk2]-fld_mean[k-2], data[ijk-kk1]-fld_mean[k-1], data[ijk]-fld_mean[k], data[ijk+kk1]-fld_mean[k+1]) );
+                               (calcw[ijk]-wmean[k])          * interp4_ws(data[ijk-kk2], data[ijk-kk1], data[ijk], data[ijk+kk1])
+                               -std::abs(calcw[ijk]-wmean[k]) * interp3_ws(data[ijk-kk2], data[ijk-kk1], data[ijk], data[ijk+kk1]) );
+                }
+            prof[k] /= static_cast<TF>(nmask[k]);
+        }
+        else
+            prof[k] = netcdf_fp_fillvalue<TF>();
+    }
+
+    master.sum(prof, gd.kcells);
 }
 
 template<typename TF>

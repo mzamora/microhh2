@@ -30,6 +30,7 @@ class Input;
 class Data_block;
 template<typename> class Grid;
 template<typename> class Stats;
+template<typename> class Advec;
 template<typename> class Diff;
 template<typename> class Column;
 template<typename> class Dump;
@@ -37,8 +38,6 @@ template<typename> class Cross;
 template<typename> class Field3d;
 template<typename> class Thermo;
 template<typename> class Timeloop;
-
-
 
 template<typename TF>
 class Thermo_disabled : public Thermo<TF>
@@ -56,7 +55,7 @@ class Thermo_disabled : public Thermo<TF>
         void init() {};
         void create(Input&, Data_block&, Stats<TF>&, Column<TF>&, Cross<TF>&, Dump<TF>&) {};
         void exec(const double) {};
-        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Diff<TF>&, const double) {};
+        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Advec<TF>&, const Diff<TF>&, const double) {};
         void exec_column(Column<TF>&) {};
         virtual void exec_dump(Dump<TF>&, unsigned long) {};
         virtual void exec_cross(Cross<TF>&, unsigned long) {};

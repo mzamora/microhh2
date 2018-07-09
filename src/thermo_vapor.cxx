@@ -715,8 +715,9 @@ void Thermo_vapor<TF>::create_dump(Dump<TF>& dump)
 }
 
 template<typename TF>
-void Thermo_vapor<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh,
-        const Diff<TF>& diff, const double dt)
+void Thermo_vapor<TF>::exec_stats(
+        Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh,
+        const Advec<TF>& advec, const Diff<TF>& diff, const double dt)
 {
     auto& gd = grid.get_grid_data();
 

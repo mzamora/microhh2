@@ -32,6 +32,8 @@ class Input;
 template<typename> class Grid;
 template<typename> class Fields;
 
+enum class Advection_type {Disabled, Advec_2, Advec_2i3, Advec_2i4, Advec_4, Advec_4m};
+
 /**
  * Base class for the advection scheme. This class is abstract and only
  * derived classes can be instantiated. Derived classes are
@@ -48,6 +50,8 @@ class Advec
         virtual void exec() = 0; ///< Execute the advection scheme.
         virtual unsigned long get_time_limit(unsigned long, double) = 0; ///< Get the maximum time step imposed by advection scheme
         virtual double get_cfl(double) = 0; ///< Retrieve the CFL number.
+
+        virtual Advection_type get_switch() const = 0;
 
     protected:
         Master& master; ///< Pointer to master class.

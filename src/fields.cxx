@@ -39,6 +39,7 @@
 #include "column.h"
 #include "cross.h"
 #include "dump.h"
+#include "advec.h"
 #include "diff.h"
 
 namespace
@@ -480,8 +481,7 @@ void Fields<TF>::get_mask(Field3d<TF>& mfield, Field3d<TF>& mfieldh, Stats<TF>& 
 }
 
 template<typename TF>
-void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh,
-        const Diff<TF>& diff)
+void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh, const Advec<TF>& advec, const Diff<TF>& diff)
 {
     auto& gd = grid.get_grid_data();
 
@@ -533,8 +533,18 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>
     if (grid.get_spatial_order() == Grid_order::Second)
     {
         stats.calc_grad_2nd(mp["u"]->fld.data(), m.profs["ugrad"].data.data(), gd.dzhi.data(), maskh_on_u->fld.data(), stats.nmaskh.data());
-        stats.calc_flux_2nd(mp["u"]->fld.data(), umodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
-                            m.profs["uw"].data.data(), tmp->fld.data(), uloc, maskh_on_u->fld.data(), stats.nmaskh.data());
+
+        // CvH: this needs to be extended or redesigned.
+        if (advec.get_switch() == Advection_type::Advec_2i3)
+        {
+            stats.calc_flux_2i3(mp["u"]->fld.data(), umodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["uw"].data.data(), tmp->fld.data(), uloc, maskh_on_u->fld.data(), stats.nmaskh.data());
+        }
+        else
+        {
+            stats.calc_flux_2nd(mp["u"]->fld.data(), umodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["uw"].data.data(), tmp->fld.data(), uloc, maskh_on_u->fld.data(), stats.nmaskh.data());
+        }
 
         if (diff.get_switch() == Diffusion_type::Diff_smag2)
         {
@@ -581,8 +591,18 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>
     if (grid.get_spatial_order() == Grid_order::Second)
     {
         stats.calc_grad_2nd(mp["v"]->fld.data(), m.profs["vgrad"].data.data(), gd.dzhi.data(), maskh_on_v->fld.data(), stats.nmaskh.data());
-        stats.calc_flux_2nd(mp["v"]->fld.data(), vmodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
-                            m.profs["vw"].data.data(), tmp->fld.data(), vloc, maskh_on_v->fld.data(), stats.nmaskh.data());
+
+        // CvH: this needs to be extended or redesigned.
+        if (advec.get_switch() == Advection_type::Advec_2i3)
+        {
+            stats.calc_flux_2i3(mp["v"]->fld.data(), vmodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["vw"].data.data(), tmp->fld.data(), vloc, maskh_on_v->fld.data(), stats.nmaskh.data());
+        }
+        else
+        {
+            stats.calc_flux_2nd(mp["v"]->fld.data(), vmodel.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["vw"].data.data(), tmp->fld.data(), vloc, maskh_on_v->fld.data(), stats.nmaskh.data());
+        }
 
         if (diff.get_switch() == Diffusion_type::Diff_smag2)
         {
@@ -623,8 +643,18 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>
         if (grid.get_spatial_order() == Grid_order::Second)
         {
             stats.calc_grad_2nd(it.second->fld.data(), m.profs[it.first+"grad"].data.data(), gd.dzhi.data(), mask_fieldh.fld.data(), stats.nmaskh.data());
-            stats.calc_flux_2nd(it.second->fld.data(), m.profs[it.first].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
-                                m.profs[it.first+"w"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+
+            // CvH: this needs to be extended or redesigned.
+            if (advec.get_switch() == Advection_type::Advec_2i3)
+            {
+                stats.calc_flux_2i3(it.second->fld.data(), m.profs[it.first].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                    m.profs[it.first+"w"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+            }
+            else
+            {
+                stats.calc_flux_2nd(it.second->fld.data(), m.profs[it.first].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                    m.profs[it.first+"w"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+            }
 
             if (diff.get_switch() == Diffusion_type::Diff_smag2)
             {
@@ -657,8 +687,18 @@ void Fields<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>
     if (grid.get_spatial_order() == Grid_order::Second)
     {
         stats.calc_grad_2nd(sd["p"]->fld.data(), m.profs["pgrad"].data.data(), gd.dzhi.data(), mask_fieldh.fld.data(), stats.nmaskh.data());
-        stats.calc_flux_2nd(sd["p"]->fld.data(), m.profs["p"].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
-                            m.profs["pw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+
+        // CvH: this needs to be extended or redesigned.
+        if (advec.get_switch() == Advection_type::Advec_2i3)
+        {
+            stats.calc_flux_2i3(sd["p"]->fld.data(), m.profs["p"].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["pw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+        }
+        else
+        {
+            stats.calc_flux_2nd(sd["p"]->fld.data(), m.profs["p"].data.data(), mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["pw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+        }
     }
     else if (grid.get_spatial_order() == Grid_order::Fourth)
     {

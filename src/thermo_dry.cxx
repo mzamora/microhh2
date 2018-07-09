@@ -31,6 +31,7 @@
 #include "finite_difference.h"
 #include "data_block.h"
 #include "stats.h"
+#include "advec.h"
 #include "diff_smag2.h"
 #include "master.h"
 #include "cross.h"
@@ -615,8 +616,9 @@ void Thermo_dry<TF>::create_cross(Cross<TF>& cross)
 }
 
 template<typename TF>
-void Thermo_dry<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh,
-        const Diff<TF>& diff, const double dt)
+void Thermo_dry<TF>::exec_stats(
+        Stats<TF>& stats, std::string mask_name, Field3d<TF>& mask_field, Field3d<TF>& mask_fieldh,
+        const Advec<TF>& advec, const Diff<TF>& diff, const double dt)
 {
     auto& gd = grid.get_grid_data();
     #ifndef USECUDA
@@ -651,8 +653,18 @@ void Thermo_dry<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field3d
     {
         auto tmp = fields.get_tmp();
         stats.calc_grad_2nd(b->fld.data(), m.profs["bgrad"].data.data(), gd.dzhi.data(), mask_fieldh.fld.data(), stats.nmaskh.data());
-        stats.calc_flux_2nd(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
-                            m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+
+        if (advec.get_switch() == Advection_type::Advec_2i3)
+        {
+            stats.calc_flux_2i3(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+        }
+        else
+        {
+            stats.calc_flux_2nd(b->fld.data(), m.profs["b"].data.data(), fields.mp["w"]->fld.data(), m.profs["w"].data.data(),
+                                m.profs["bw"].data.data(), tmp->fld.data(), sloc, mask_fieldh.fld.data(), stats.nmaskh.data());
+        }
+
         if (diff.get_switch() == Diffusion_type::Diff_smag2)
         {
             stats.calc_diff_2nd(b->fld.data(), fields.mp["w"]->fld.data(), fields.sd["evisc"]->fld.data(),

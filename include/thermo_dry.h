@@ -30,6 +30,7 @@ class Master;
 class Input;
 template<typename> class Grid;
 template<typename> class Stats;
+template<typename> class Advec;
 template<typename> class Diff;
 template<typename> class Column;
 template<typename> class Dump;
@@ -60,7 +61,7 @@ class Thermo_dry : public Thermo<TF>
         void exec(const double); ///< Add the tendencies belonging to the buoyancy.
         unsigned long get_time_limit(unsigned long, double); ///< Compute the time limit (n/a for thermo_dry)
 
-        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Diff<TF>&, const double);
+        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Advec<TF>&, const Diff<TF>&, const double);
         void exec_cross(Cross<TF>&, unsigned long);
         void exec_dump(Dump<TF>&, unsigned long);
         void exec_column(Column<TF>&);

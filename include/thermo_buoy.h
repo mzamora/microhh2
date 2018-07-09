@@ -29,6 +29,7 @@ class Master;
 class Input;
 template<typename> class Grid;
 template<typename> class Stats;
+template<typename> class Advec;
 template<typename> class Diff;
 template<typename> class Column;
 template<typename> class Dump;
@@ -70,7 +71,7 @@ class Thermo_buoy : public Thermo<TF>
         // Empty functions that are allowed to pass.
         void init() {}
         void create(Input&, Data_block&, Stats<TF>&, Column<TF>&, Cross<TF>&, Dump<TF>&) {}
-        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Diff<TF>&, const double) {};
+        void exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&, const Advec<TF>&, const Diff<TF>&, const double) {};
         void exec_cross(Cross<TF>&, unsigned long) {};
         void exec_dump(Dump<TF>&, unsigned long) {};
         void exec_column(Column<TF>&) {};
