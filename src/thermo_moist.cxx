@@ -1026,16 +1026,19 @@ void Thermo_moist<TF>::exec_stats(Stats<TF>& stats, std::string mask_name, Field
     auto ql = fields.get_tmp();
     get_thermo_field(*ql, "ql", true, true);
     stats.calc_mean(m.profs["ql"].data.data(), ql->fld.data(), no_offset, mask_field.fld.data(), stats.nmask.data());
-    //stats.calc_count(m.profs["ccover"].data.data(), ql->fld.data(), no_offset, mask_field.fld.data(), stats.nmask.data());
-    //stats.calc_cover(m.profs["cfrac"].data.data(), ql->fld.data(), no_offset, mask_field.fld.data(), stats.nmask.data());
-    //stats.calc_path(m.profs["lwp"].data.data(), ql->fld.data(), no_offset, mask_field.fld.data(), stats.nmask.data());
+
+    const TF threshold = 0.;
+    stats.calc_count(ql->fld.data(), m.profs["cfrac"].data.data(), threshold, mask_field.fld.data(), stats.nmask.data());
+    stats.calc_cover(ql->fld.data(), mask_field.fld_bot.data(), stats.nmaskbot, m.tseries["ccover"].data, threshold);
+    stats.calc_path (ql->fld.data(), mask_field.fld_bot.data(), stats.nmaskbot, m.tseries["lwp"]   .data);
+
     fields.release_tmp(ql);
 
     // Calculate base state in tmp array
     if (bs_stats.swupdatebasestate)
     {
-        m.profs["phydro"  ].data = bs_stats.pref;
-        m.profs["phydroh" ].data = bs_stats.prefh;
+        m.profs["phydro" ].data = bs_stats.pref;
+        m.profs["phydroh"].data = bs_stats.prefh;
         m.profs["rho" ].data = fields.rhoref;
         m.profs["rhoh"].data = fields.rhorefh;
     }

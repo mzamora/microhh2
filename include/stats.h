@@ -133,9 +133,9 @@ class Stats
         void calc_flux_4th(TF*, TF*, TF*, TF*, const int[3], TF*, int*);
 
         void add_fluxes   (TF*, TF*, TF*);
-        //void calc_count   (double*, double*, double, double*, int*);
-        //void calc_path    (double*, double*, int*, double*);
-        //void calc_cover   (double*, double*, int*, double*, double);
+        void calc_count   (const TF*, TF*, const TF, const TF*, const int*);
+        void calc_path    (const TF*, const TF*, const int, TF&);
+        void calc_cover   (const TF*, const TF*, const int, TF&, const TF);
 
         //void calc_sorted_prof(double*, double*, double*);
 

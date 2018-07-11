@@ -848,36 +848,38 @@ void Stats<TF>::calc_max_2d(TF& max, const TF* const restrict data,
 //    }
 //}
 //
-//// \TODO the count function assumes that the variable to count is at the mask location
-//void Stats::calc_count(double* restrict data, double* restrict prof, double threshold,
-//                       double* restrict mask, int* restrict nmask)
-//{
-//    const int jj = grid->icells;
-//    const int kk = grid->ijcells;
-//
-//    for (int k=0; k<grid->kcells; ++k)
-//    {
-//        prof[k] = 0.;
-//        for (int j=grid->jstart; j<grid->jend; ++j)
-//#pragma ivdep
-//            for (int i=grid->istart; i<grid->iend; ++i)
-//            {
-//                const int ijk = i + j*jj + k*kk;
-//                if (data[ijk] > threshold)
-//                    prof[k] += mask[ijk]*1.;
-//            }
-//    }
-//
-//    master->sum(prof, grid->kcells);
-//
-//    for (int k=0; k<grid->kcells; k++)
-//    {
-//        if (nmask[k] > nthres)
-//            prof[k] /= (double)(nmask[k]);
-//        else
-//            prof[k] = NC_FILL_DOUBLE;
-//    }
-//}
+
+// \TODO the count function assumes that the variable to count is at the mask location
+template<typename TF>
+void Stats<TF>::calc_count(const TF* restrict data, TF* restrict prof, const TF threshold,
+                           const TF* restrict mask, const int* restrict nmask)
+{
+    auto& gd = grid.get_grid_data();
+
+    const int jj = gd.icells;
+    const int kk = gd.ijcells;
+
+    for (int k=0; k<gd.kcells; ++k)
+    {
+        prof[k] = 0.;
+        if (nmask[k] > nthres)
+        {
+            for (int j=gd.jstart; j<gd.jend; ++j)
+                #pragma ivdep
+                for (int i=gd.istart; i<gd.iend; ++i)
+                {
+                    const int ijk = i + j*jj + k*kk;
+                    if (data[ijk] > threshold)
+                        prof[k] += mask[ijk]*1.;
+                }
+            prof[k] /= static_cast<TF>(nmask[k]);
+        }
+        else
+            prof[k] = netcdf_fp_fillvalue<TF>();
+    }
+
+    master.sum(prof, gd.kcells);
+}
 
 template<typename TF>
 void Stats<TF>::calc_moment(TF* restrict data, TF* restrict fld_mean, TF* restrict prof, const int power,
@@ -891,14 +893,14 @@ void Stats<TF>::calc_moment(TF* restrict data, TF* restrict fld_mean, TF* restri
         prof[k] = 0.;
         if (nmask[k] > nthres)
         {
-          for (int j=gd.jstart; j<gd.jend; ++j)
-              #pragma ivdep
-              for (int i=gd.istart; i<gd.iend; ++i)
-              {
-                  const int ijk = i + j*gd.icells + k*gd.ijcells;
-                  prof[k] += mask[ijk]*std::pow(data[ijk]-fld_mean[k],power);
-              }
-           prof[k] /= static_cast<TF>(nmask[k]);
+            for (int j=gd.jstart; j<gd.jend; ++j)
+                #pragma ivdep
+                for (int i=gd.istart; i<gd.iend; ++i)
+                {
+                    const int ijk = i + j*gd.icells + k*gd.ijcells;
+                    prof[k] += mask[ijk]*std::pow(data[ijk]-fld_mean[k],power);
+                }
+            prof[k] /= static_cast<TF>(nmask[k]);
         }
         else
             prof[k] = netcdf_fp_fillvalue<TF>();
@@ -1294,73 +1296,82 @@ void Stats<TF>::add_fluxes(TF* restrict flux, TF* restrict turb, TF* restrict di
     }
 }
 
-///**
-// * This function calculates the total domain integrated path of variable data over maskbot
-// */
-//void Stats::calc_path(double* restrict data, double* restrict maskbot, int* restrict nmaskbot, double* restrict path)
-//{
-//    const int jj = grid->icells;
-//    const int kk = grid->ijcells;
-//    const int kstart = grid->kstart;
-//
-//    *path = 0.;
-//
-//    if (*nmaskbot > nthres)
-//    {
-//        // Integrate liquid water
-//        for (int j=grid->jstart; j<grid->jend; j++)
-//            for (int i=grid->istart; i<grid->iend; i++)
-//            {
-//                const int ij = i + j*jj;
-//                if (maskbot[ij] == 1)
-//                    for (int k=kstart; k<grid->kend; k++)
-//                    {
-//                        const int ijk = i + j*jj + k*kk;
-//                        *path += fields->rhoref[k] * data[ijk] * grid->dz[k];
-//                    }
-//            }
-//        *path /= (double)*nmaskbot;
-//        master->sum(path, 1);
-//    }
-//    else
-//        *path = NC_FILL_DOUBLE;
-//}
-//
-///**
-// * This function calculates the vertical projected cover of variable data over maskbot
-// */
-//void Stats::calc_cover(double* restrict data, double* restrict maskbot, int* restrict nmaskbot, double* restrict cover, double threshold)
-//{
-//    const int jj = grid->icells;
-//    const int kk = grid->ijcells;
-//    const int kstart = grid->kstart;
-//
-//    *cover = 0.;
-//
-//    if (*nmaskbot > nthres)
-//    {
-//        // Per column, check if cloud present
-//        for (int j=grid->jstart; j<grid->jend; j++)
-//            for (int i=grid->istart; i<grid->iend; i++)
-//            {
-//                const int ij = i + j*jj;
-//                if (maskbot[ij] == 1)
-//                    for (int k=kstart; k<grid->kend; k++)
-//                    {
-//                        const int ijk = i + j*jj + k*kk;
-//                        if (data[ijk]>threshold)
-//                        {
-//                            *cover += 1.;
-//                            break;
-//                        }
-//                    }
-//            }
-//        *cover /= (double)*nmaskbot;
-//        master->sum(cover,1);
-//    }
-//    else
-//        *cover = NC_FILL_DOUBLE;
-//}
+/**
+ * This function calculates the total domain integrated path of variable data over maskbot
+ */
+template<typename TF>
+void Stats<TF>::calc_path(const TF* restrict data, const TF* restrict maskbot, const int nmaskbot, TF& path)
+{
+    auto& gd = grid.get_grid_data();
+
+    const int jj = gd.icells;
+    const int kk = gd.ijcells;
+    const int kstart = gd.kstart;
+
+    path = 0.;
+
+    if (nmaskbot > nthres)
+    {
+        // Integrate liquid water
+        for (int j=gd.jstart; j<gd.jend; ++j)
+            for (int i=gd.istart; i<gd.iend; ++i)
+            {
+                const int ij = i + j*jj;
+                if (maskbot[ij] == 1)
+                    for (int k=kstart; k<gd.kend; ++k)
+                    {
+                        const int ijk = i + j*jj + k*kk;
+                        path += fields.rhoref[k] * data[ijk] * gd.dz[k];
+                    }
+            }
+        path /= static_cast<TF>(nmaskbot);
+        master.sum(&path, 1);
+    }
+    else
+        path = netcdf_fp_fillvalue<TF>();
+}
+
+/**
+ * This function calculates the vertical projected cover of variable data over maskbot
+ */
+template<typename TF>
+void Stats<TF>::calc_cover(
+        const TF* restrict data, const TF* restrict maskbot, const int nmaskbot, TF& cover, const TF threshold)
+{
+    auto& gd = grid.get_grid_data();
+
+    const int jj = gd.icells;
+    const int kk = gd.ijcells;
+    const int kstart = gd.kstart;
+
+    cover = 0.;
+
+    if (nmaskbot > nthres)
+    {
+        // Per column, check if cloud present
+        for (int j=gd.jstart; j<gd.jend; j++)
+            for (int i=gd.istart; i<gd.iend; i++)
+            {
+                const int ij = i + j*jj;
+                if (maskbot[ij] == 1)
+                {
+                    for (int k=kstart; k<gd.kend; k++)
+                    {
+                        const int ijk = i + j*jj + k*kk;
+                        if (data[ijk] > threshold)
+                        {
+                            cover += 1.;
+                            break;
+                        }
+                    }
+                }
+            }
+        cover /= static_cast<TF>(nmaskbot);
+        master.sum(&cover, 1);
+    }
+    else
+        cover = netcdf_fp_fillvalue<TF>();
+}
 
 template class Stats<double>;
 template class Stats<float>;
