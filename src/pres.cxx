@@ -34,6 +34,7 @@
 #include "pres_disabled.h"
 #include "pres_2.h"
 #include "pres_4.h"
+#include "pres_5.h"
 
 template<typename TF>
 Pres<TF>::Pres(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
@@ -63,7 +64,7 @@ template<typename TF>
 std::shared_ptr<Pres<TF>> Pres<TF>::factory(
         Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin)
 {
-    std::string swspatialorder = (gridin.get_spatial_order() == Grid_order::Second) ? "2" : "4";
+    std::string swspatialorder = (gridin.get_spatial_order() == Grid_order::Second) ? "2" : "4" : "5";
     std::string swpres = inputin.get_item<std::string>("pres", "swpres", "", swspatialorder);
 
     if (swpres == "0")
@@ -72,6 +73,8 @@ std::shared_ptr<Pres<TF>> Pres<TF>::factory(
         return std::make_shared<Pres_2<TF>>(masterin, gridin, fieldsin, fftin, inputin);
     else if (swpres == "4")
         return std::make_shared<Pres_4<TF>>(masterin, gridin, fieldsin, fftin, inputin);
+    else if (swpres == "5")
+        return std::make_shared<Pres_5<TF>>(masterin, gridin, fieldsin, fftin, inputin);
     else
     {
         masterin.print_error("\"%s\" is an illegal value for swpres\n", swpres.c_str());
