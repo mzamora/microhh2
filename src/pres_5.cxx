@@ -5,6 +5,7 @@
  * Copyright (c) 2014-2018 Bart van Stratum
  * Copyright (c) 2018 Elynn Wu
  * Copyright (c) 2018 Monica Zamora Zapata
+ *
  * This file is part of MicroHH
  *
  * MicroHH is free software: you can redistribute it and/or modify
@@ -27,20 +28,22 @@
 #include "master.h"
 #include "grid.h"
 #include "fields.h"
-#include "fft.h"
+#include "fft_1D.h"
 #include "pres_5.h"
 #include "defines.h"
 
 template<typename TF>
-Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
+Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT_1D<TF>& fftin, Input& inputin) :
     Pres<TF>(masterin, gridin, fieldsin, fftin, inputin),
     boundary_cyclic(master, grid)
 {
     #ifdef USECUDA
     a_g = 0;
     c_g = 0;
+    d_g = 0; //mz
+    e_g = 0; //mz
     work2d_g = 0;
-    bmati_g  = 0;
+//    bmati_g  = 0; //mz
     bmatj_g  = 0;
     #endif
 }
@@ -97,11 +100,13 @@ void Pres_5<TF>::init()
 {
     const Grid_data<TF>& gd = grid.get_grid_data();
 
-    bmati.resize(gd.itot);
+//    bmati.resize(gd.itot); //mz
     bmatj.resize(gd.jtot);
 
     a.resize(gd.kmax);
     c.resize(gd.kmax);
+    d.resize(gd.kmax); //mz
+    e.resize(gd.kmax); //mz
 
     work2d.resize(gd.imax*gd.jmax);
 
@@ -115,7 +120,7 @@ void Pres_5<TF>::set_values()
     const Grid_data<TF>& gd = grid.get_grid_data();
 
     // Compute the modified wave numbers of the 2nd order scheme.
-    const TF dxidxi = 1./(gd.dx*gd.dx);
+//    const TF dxidxi = 1./(gd.dx*gd.dx); //mz
     const TF dyidyi = 1./(gd.dy*gd.dy);
 
     const TF pi = std::acos(-1.);
@@ -126,17 +131,19 @@ void Pres_5<TF>::set_values()
     for (int j=gd.jtot/2+1; j<gd.jtot; ++j)
         bmatj[j] = bmatj[gd.jtot-j];
 
-    for (int i=0; i<gd.itot/2+1; ++i)
-        bmati[i] = 2. * (std::cos(2.*pi*(TF)i/(TF)gd.itot)-1.) * dxidxi;
+//    for (int i=0; i<gd.itot/2+1; ++i) //
+//        bmati[i] = 2. * (std::cos(2.*pi*(TF)i/(TF)gd.itot)-1.) * dxidxi;
+//
+//    for (int i=gd.itot/2+1; i<gd.itot; ++i)
+//        bmati[i] = bmati[gd.itot-i];
 
-    for (int i=gd.itot/2+1; i<gd.itot; ++i)
-        bmati[i] = bmati[gd.itot-i];
-
-    // create vectors that go into the tridiagonal matrix solver
+    // create vectors that go into the PENTAdiagonal matrix solver
     for (int k=0; k<gd.kmax; ++k)
     {
         a[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc  ]*gd.dzhi[k+gd.kgc  ];
         c[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc+1]*gd.dzhi[k+gd.kgc+1];
+	d[k]  //mz
+	e[k]  //mz
     }
 }
 
@@ -183,6 +190,7 @@ void Pres_5<TF>::input(TF* const restrict p,
             }
 }
 
+//tdma-start
 namespace
 {
     // tridiagonal matrix solver, taken from Numerical Recipes, Press
@@ -250,6 +258,20 @@ namespace
                 }
     }
 }
+//tdma-end
+
+//pdma-start
+namespace
+{
+    // tridiagonal matrix solver, taken from Numerical Recipes, Press
+    template<typename TF>
+    void pdma(TF* const restrict a, TF* const restrict b, TF* const restrict c, TF* const restrict d, TF* const restrict e,
+              TF* const restrict p, TF* const restrict work2d, TF* const restrict work3d,
+              const int iblock, const int jblock, const int kmax)
+
+// FILL WITH PENTADIAGONAL SOLVER
+
+} //pdma-end
 
 template<typename TF>
 void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* const restrict b,
@@ -270,12 +292,12 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     int i,j,k,jj,kk,ijk;
     int iindex,jindex;
 
-    fft.exec_forward(p, work3d);
+    fft_1D.exec_forward(p, work3d); //mz
 
     jj = iblock;
     kk = iblock*jblock;
 
-    // solve the tridiagonal system
+    // solve the PENTAdiagonal system
     // create vectors that go into the tridiagonal matrix solver
     for (k=0; k<kmax; k++)
         for (j=0; j<jblock; j++)
@@ -311,11 +333,11 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
                 b[ijk] += c[kmax-1];
         }
 
-    // call tdma solver
-    tdma(a.data(), b, c.data(), p, work2d.data(), work3d,
-         gd.iblock, gd.jblock, gd.kmax);
+    // call PDdma solver // MZ
+    pdma(a.data(), b, c.data(), d.data(), e.data(), p, work2d.data(), work3d,
+         gd.iblock, gd.jblock, gd.kmax); //mz
 
-    fft.exec_backward(p, work3d);
+    fft_1D.exec_backward(p, work3d); //mz
 
     jj = imax;
     kk = imax*jmax;
