@@ -58,22 +58,28 @@ class PRES_5 : public Pres<TF>
         using Pres<TF>::fft;
         Boundary_cyclic<TF> boundary_cyclic;
 
-        std::vector<TF> bmati;
+//        std::vector<TF> bmati;
         std::vector<TF> bmatj;
         std::vector<TF> a;
+        std::vector<TF> b; //mz
         std::vector<TF> c;
         std::vector<TF> work2d;
+        std::vector<TF> p2d;
+        std::vector<TF> pout;
 
         #ifdef USECUDA
         using Pres<TF>::make_cufft_plan;
         using Pres<TF>::fft_forward;
         using Pres<TF>::fft_backward;
 
-        TF* bmati_g;
+//        TF* bmati_g; //mz
         TF* bmatj_g;
         TF* a_g;
+        TF* b_g; //mz
         TF* c_g;
         TF* work2d_g;
+        TF* p2d_g;
+        TF* pout;
         #endif
 
         void input(TF* const restrict,

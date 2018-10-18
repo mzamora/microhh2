@@ -40,9 +40,9 @@ Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT
     #ifdef USECUDA
     a_g = 0;
     c_g = 0;
-    d_g = 0; //mz
-    e_g = 0; //mz
+    b_g = 0; //mz
     work2d_g = 0;
+    p2d_g = 0;
 //    bmati_g  = 0; //mz
     bmatj_g  = 0;
     #endif
@@ -100,17 +100,17 @@ void Pres_5<TF>::init()
 {
     const Grid_data<TF>& gd = grid.get_grid_data();
 
-//    bmati.resize(gd.itot); //mz
+//    bmati.resize(gd.itot); //mz only y now
     bmatj.resize(gd.jtot);
 
-    a.resize(gd.kmax);
-    c.resize(gd.kmax);
-    d.resize(gd.kmax); //mz
-    e.resize(gd.kmax); //mz
+    a.resize((gd.imax-2)*(gd.kmax-2));
+    c.resize((gd.imax-2)*(gd.kmax-2));
+    b.resize((gd.imax-2)*(gd.kmax-2)); //mz 5 diagonals for xz space
 
     work2d.resize(gd.imax*gd.jmax);
+    p2d.resize((gd.imax-2)*(gd.kmax-2)); //mz temporary pressure slice output in the xz plane
 
-    boundary_cyclic.init();
+    boundary_cyclic.init(); // mz: this might need to be replaced by nonperiodic in the x-direction
     fft.init();
 }
 
@@ -120,7 +120,7 @@ void Pres_5<TF>::set_values()
     const Grid_data<TF>& gd = grid.get_grid_data();
 
     // Compute the modified wave numbers of the 2nd order scheme.
-//    const TF dxidxi = 1./(gd.dx*gd.dx); //mz
+//    const TF dxidxi = 1./(gd.dx*gd.dx); //mz only y now
     const TF dyidyi = 1./(gd.dy*gd.dy);
 
     const TF pi = std::acos(-1.);
@@ -137,15 +137,14 @@ void Pres_5<TF>::set_values()
 //    for (int i=gd.itot/2+1; i<gd.itot; ++i)
 //        bmati[i] = bmati[gd.itot-i];
 
-    // create vectors that go into the PENTAdiagonal matrix solver
-    for (int k=0; k<gd.kmax; ++k)
-    {
-        a[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc  ]*gd.dzhi[k+gd.kgc  ];
-        c[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc+1]*gd.dzhi[k+gd.kgc+1];
-	d[k]  //mz
-	e[k]  //mz
-    }
-}
+    //for now, will be constant for uniform grids
+//    // create vectors that go into the PENTAdiagonal matrix solver
+//    for (int k=0; k<gd.kmax; ++k)
+//    {
+//        a[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc  ]*gd.dzhi[k+gd.kgc  ];
+//        c[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc+1]*gd.dzhi[k+gd.kgc+1];
+//    }
+//}
 
 template<typename TF>
 void Pres_5<TF>::input(TF* const restrict p,
@@ -172,8 +171,10 @@ void Pres_5<TF>::input(TF* const restrict p,
     const int kgc = gd.kgc;
 
     // set the cyclic boundary conditions for the tendencies
+    // mz: these might need to be replaced by nonperiodic in the x-direction
     boundary_cyclic.exec(ut, Edge::East_west_edge  );
     boundary_cyclic.exec(vt, Edge::North_south_edge);
+    //does the pressure field need a buondary imposing? in order to bring the x-BCs?
 
     // write pressure as a 3d array without ghost cells
     for (int k=0; k<gd.kmax; ++k)
@@ -190,88 +191,96 @@ void Pres_5<TF>::input(TF* const restrict p,
             }
 }
 
-//tdma-start
-namespace
-{
-    // tridiagonal matrix solver, taken from Numerical Recipes, Press
-    template<typename TF>
-    void tdma(TF* const restrict a, TF* const restrict b, TF* const restrict c,
-              TF* const restrict p, TF* const restrict work2d, TF* const restrict work3d,
-              const int iblock, const int jblock, const int kmax)
-
-    {
-        const int jj = iblock;
-        const int kk = iblock*jblock;
-
-        for (int j=0; j<jblock; j++)
-            #pragma ivdep
-            for (int i=0; i<iblock; i++)
-            {
-                const int ij = i + j*jj;
-                work2d[ij] = b[ij];
-            }
-
-        for (int j=0; j<jblock; j++)
-            #pragma ivdep
-            for (int i=0; i<iblock; i++)
-            {
-                const int ij = i + j*jj;
-                p[ij] /= work2d[ij];
-            }
-
-        for (int k=1; k<kmax; k++)
-        {
-            for (int j=0; j<jblock; j++)
-                #pragma ivdep
-                for (int i=0; i<iblock; i++)
-                {
-                    const int ij  = i + j*jj;
-                    const int ijk = i + j*jj + k*kk;
-                    work3d[ijk] = c[k-1] / work2d[ij];
-                }
-            for (int j=0; j<jblock; j++)
-                #pragma ivdep
-                for (int i=0; i<iblock; i++)
-                {
-                    const int ij  = i + j*jj;
-                    const int ijk = i + j*jj + k*kk;
-                    work2d[ij] = b[ijk] - a[k]*work3d[ijk];
-                }
-            for (int j=0; j<jblock; j++)
-                #pragma ivdep
-                for (int i=0; i<iblock; i++)
-                {
-                    const int ij  = i + j*jj;
-                    const int ijk = i + j*jj + k*kk;
-                    p[ijk] -= a[k]*p[ijk-kk];
-                    p[ijk] /= work2d[ij];
-                }
-        }
-
-        for (int k=kmax-2; k>=0; k--)
-            for (int j=0; j<jblock; j++)
-                #pragma ivdep
-                for (int i=0; i<iblock; i++)
-                {
-                    const int ijk = i + j*jj + k*kk;
-                    p[ijk] -= work3d[ijk+kk]*p[ijk+kk];
-                }
-    }
-}
-//tdma-end
-
 //pdma-start
 namespace
 {
-    // tridiagonal matrix solver, taken from Numerical Recipes, Press
+    // pentadiagonal matrix solver, 
+    // Adapted from https://github.com/delallea/PLearn/blob/76684e2a2af134859be2ef621e84af0dbd838f2e/plearn/math/BandedSolvers.h 
+    // Copyright (C) 2004 Nicolas Chapados
+	// 
+	// Redistribution and use in source and binary forms, with or without
+	// modification, are permitted provided that the following conditions are met:
+	// 
+	//  1. Redistributions of source code must retain the above copyright
+	//     notice, this list of conditions and the following disclaimer.
+	// 
+	//  2. Redistributions in binary form must reproduce the above copyright
+	//     notice, this list of conditions and the following disclaimer in the
+	//     documentation and/or other materials provided with the distribution.
+	// 
+	//  3. The name of the authors may not be used to endorse or promote
+	//     products derived from this software without specific prior written
+	//     permission.
+	// 
+	// THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
+	// IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+	// OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
+	// NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+	// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+	// TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+	// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+	// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+	// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+	// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+	// 
+	// This file is part of the PLearn library. For more information on the PLearn
+	// library, go to the PLearn Web site at www.plearn.org
+
+
     template<typename TF>
-    void pdma(TF* const restrict a, TF* const restrict b, TF* const restrict c, TF* const restrict d, TF* const restrict e,
-              TF* const restrict p, TF* const restrict work2d, TF* const restrict work3d,
-              const int iblock, const int jblock, const int kmax)
+    void pdma(TF* const restrict a, TF* const restrict b, TF* const restrict c, 
+				TF* const restrict p2d, const int iblock, const int kmax)
+{
+//              TF* const restrict p, TF* const restrict work2d, TF* const restrict work3d,
+//              const int iblock, const int jblock, const int kmax)
 
-// FILL WITH PENTADIAGONAL SOLVER
+	const int len=p2d.size(); //=iblock*kmax?
+	c[len-1]=0; // ensure last elements of 2nd and 3rd diagonal are zero
+	c[len-2]=0;
+	b[len-1]=0;
 
+	TF h1=0;
+    TF h2=0;
+    TF h3=0;
+    TF h4=0;
+    TF h5=0;
+    TF hh1=0;
+    TF hh2=0;
+    TF hh3=0;
+    TF hh5=0;
+    TF z=0;
+    TF hb=0;
+	TF hc=0;	
+
+	for (int i=0; i<len; ++i){
+		z=a[i]-h4*h1-hh5*hh2;
+        hb=b[i];
+        hh1=h1;
+        h1=(hb-h4*h2)/z;
+        b[i]=h1;
+        hc=c[i];
+        hh2=h2;
+        h2=hc/z;
+        c[i]=h2;
+        a[i]=(y[i]-hh3*hh5-h3*h4)/z;
+        hh3=h3;
+        h3=a[i];
+        h4=hb-h5*hh1;
+        hh5=h5;
+		h5=hc;
+	}
+
+    h2=0;
+    h1=a[m-1];
+    y[m-1]=h1;
+
+    for (int i=m-1 ; i>=0 ; --i) {
+        y[i]=a[i]-b[i]*h1-c[i]*h2;
+        h2=h1;
+        h1=y[i];
+	}
 } //pdma-end
+}
 
 template<typename TF>
 void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* const restrict b,
@@ -288,54 +297,88 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     const int igc    = gd.igc;
     const int jgc    = gd.jgc;
     const int kgc    = gd.kgc;
+	const TF dxidxi = 1./(gd.dx*gd.dx);
 
-    int i,j,k,jj,kk,ijk;
+    int i,j,k,jj,kk,ijk,ik;
     int iindex,jindex;
 
-    fft_1D.exec_forward(p, work3d); //mz
+    fft_1D.exec_forward(p, work3d); //mz: fft only in the y direction
+	//work3d is the output of the fft
 
     jj = iblock;
     kk = iblock*jblock;
 
-    // solve the PENTAdiagonal system
-    // create vectors that go into the tridiagonal matrix solver
-    for (k=0; k<kmax; k++)
-        for (j=0; j<jblock; j++)
-            #pragma ivdep
-            for (i=0; i<iblock; i++)
+    for (j=0; j<gd.jtot; j++) //mz: for each wavenumber in y
+    {
+        //current wavenumber is bmatj[j]
+
+        //compute diagonals and right hand side for the 5diag linear system
+		//the dirichlet case solves a vector of size (nx-2)(nz-2)
+		
+        for (k=1; k<kend-1; ++k)
+            for (i=1; i<iblock-1; ++i)
             {
-                // swap the mpicoords, because domain is turned 90 degrees to avoid two mpi transposes
-                iindex = md.mpicoordy * iblock + i;
-                jindex = md.mpicoordx * jblock + j;
+                ik=(i-1)+(k-1)*kk;
+				ijk=i+j*jj+k*kk;
 
-                ijk  = i + j*jj + k*kk;
-                b[ijk] = dz[k+kgc]*dz[k+kgc] * rhoref[k+kgc]*(bmati[iindex]+bmatj[jindex]) - (a[k]+c[k]);
-                p[ijk] = dz[k+kgc]*dz[k+kgc] * p[ijk];
+				//diagonals
+                a[ik]=-2.*dxidxi-2./gd.dz[k+kgc]./gd.dz[k+kgc]+bmatj[j].*bmatj[j];
+				if (ik % (iblock-2)==0 ) //if the modulus is zero, the element is zero
+                	b[ik]=0;
+				else
+					b[ik]=1./gd.dz[k+kgc]./gd.dz[k+kgc];
+                c[ik]=dxidxi;
+
+				//default right hand side from 3d semispectral pressure field
+				p2d[ik]=work3d[ijk];
             }
+        
+		//for the boundaries, add extra rhs terms from dirichlet condition
+		i=1;
+		for (k=1; k<kend-1; ++k)
+		{
+			ik=(i-1)+(k-1)*kk;
+			ijk=(i-1)+j*jj+k*kk; //"in boundary"
+			p2d[ik]-=work3d[ijk].*dxidxi; //should this be work3d or a special field to get the fft of the yz plane at x=0?. same in other lines
+		}
 
-    for (j=0; j<jblock; j++)
-        #pragma ivdep
-        for (i=0; i<iblock; i++)
-        {
-            iindex = md.mpicoordy * iblock + i;
-            jindex = md.mpicoordx * jblock + j;
+		i=iend-2;
+		for (k=1; k<kend-1; ++k)
+		{
+			ik=(i-1)+(k-1)*kk;
+			ijk=(i+1)+j*jj+k*kk; //"out boundary"
+			p2d[ik]-=work3d[ijk].*dxidxi;
+		}
 
-            // substitute BC's
-            ijk = i + j*jj;
-            b[ijk] += a[0];
+		k=1;
+		for (i=1; i<iend-1; ++i)
+		{
+			ik=(i-1)+(k-1)*kk;
+			ijk=i+j*jj+(k-1)*kk; //"bottom boundary"
+			p2d[ik]-=work3d[ijk]./gd.dz[k]./gd.dz[k];
+		}
 
-            // for wave number 0, which contains average, set pressure at top to zero
-            ijk  = i + j*jj + (kmax-1)*kk;
-            if (iindex == 0 && jindex == 0)
-                b[ijk] -= c[kmax-1];
-            // set dp/dz at top to zero
-            else
-                b[ijk] += c[kmax-1];
-        }
+		k=kend-1;
+		for (i=1; i<iend-1; ++k)
+		{
+			ik=(i-1)+(k-1)*kk;
+			ijk=i+j*jj+(k+1)*kk; //"top boundary"
+			p2d[ik]-=work3d[ijk]./gd.dz[k]./gd.dz[k];
+		}
+		
+        //solve the pentadiagonal system 
+        pdma(a, b, c, p2d, gd.iblock, gd.kmax);
 
-    // call PDdma solver // MZ
-    pdma(a.data(), b, c.data(), d.data(), e.data(), p, work2d.data(), work3d,
-         gd.iblock, gd.jblock, gd.kmax); //mz
+        //append pseudospectral slice into the 3d matrix
+        for (k=1; k<kend-1; ++k)
+            for (i=1; i<iblock-1; ++i)
+            {
+                ijk=i+j*jj+k*kk; //j is fixed
+                ik=(i-1)+(k-1)*kk;
+                work3d[ijk]=p2d[ik];
+            }
+        
+    } // end of y-wavenumber loop
 
     fft_1D.exec_backward(p, work3d); //mz
 
