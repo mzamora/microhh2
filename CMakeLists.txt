@@ -130,4 +130,5 @@ endif()
 
 add_subdirectory(src)
 #add_subdirectory(src_rrtmg)
+add_subdirectory(src_fishpack)
 add_subdirectory(main)
