@@ -146,5 +146,9 @@ endif()
 
 add_subdirectory(src)
 #add_subdirectory(src_rrtmg)
+<<<<<<< HEAD
 #add_subdirectory(src_rrtmgp)
+=======
+add_subdirectory(src_fishpack)
+>>>>>>> Create blktri wrapper
 add_subdirectory(main)
