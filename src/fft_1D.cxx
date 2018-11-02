@@ -420,7 +420,7 @@ namespace
     #else
     template<typename TF>
     void fft_forward(TF* const restrict data,   TF* const restrict tmp1,
-                     TF* const restrict fftini, TF* const restrict fftouti,
+//                     TF* const restrict fftini, TF* const restrict fftouti,
                      TF* const restrict fftinj, TF* const restrict fftoutj,
 //                     fftw_plan& iplanf, fftwf_plan& iplanff,
                      fftw_plan& jplanf, fftwf_plan& jplanff,
