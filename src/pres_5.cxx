@@ -39,12 +39,12 @@ Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT
 {
     #ifdef USECUDA
     a_g = 0;
+    b_g = 0;
     c_g = 0;
-    b_g = 0; //mz
     work2d_g = 0;
     p2d_g = 0;
-//    bmati_g  = 0; //mz
     bmatj_g  = 0;
+    pout = 0;
     #endif
 }
 
@@ -220,12 +220,15 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     const int jgc    = gd.jgc;
     const int kgc    = gd.kgc;
     const TF dxidxi = 1./(gd.dx*gd.dx);
-    const int np; //integer if periodic bs in the x direction
-    const int k_blktri;
-    double w_blkrti;
-    double y_blktri(imax,kmax);
+    const int np; //integer=0 if periodic bs in the x direction
+    const int k_blktri; //dimension of w_blktri
+    auto w_blktri=fields.get_tmp(); //lu decomposition in blktri
+    auto y_blktri=fields.get_tmp(); //right hand size, then output in blktri
+
     int i,j,k,jj,kk,ijk,ik;
     int iindex,jindex;
+
+    y_blktri.resize(kmax,imax);
 
     fft_1D.exec_forward(p, work3d); //mz: fft only in the y direction
     //work3d is the output of the fft
@@ -234,15 +237,12 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     kk = iblock*jblock;
 
     //if periodic in x
-    np=1;
+    np=0;
 
-    // initialize w as a zero array of dimension k_blktri as in the blktri documentation
+    // initialize w as a zero array of dimension k_blktri
     k_blktri=int(log(kmax)/log(2.))+1;
     k_blktri=(k_blktri-2)*(2**(k_blktri+1))+k_blktri+5+max(2*kmax,6*imax);
-    for (i=0; i<k_blktri; i++)
-    {
-        w_blktri[i]=0;
-    }
+    w_blktri.resize(k_blktri);
 
     // coefficients for the block tridiagonals don't change for each wavenumber
     for (k=0; k<kmax; ++k)
@@ -258,8 +258,8 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         cm[i]=am[i]; //it's the same as am for uniform x grid
     }
 
-
-    for (j=0; j<jmax; j++) //mz: for each wavenumber in y
+    // start looping through the wavenumbers in y
+    for (j=0; j<jmax; j++)
     {
         //current wavenumber is bmatj[j]
 
@@ -276,24 +276,19 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
 
         // first approach: BCs in x in and x out are periodic, so we don't deal with rhs stuff there
 /*
-        //for the boundaries, add extra rhs terms from dirichlet condition: needed later
-        if (j==0)
+       //inlet dirichlet
+        am[0]=0;
+        bm[0]=1;
+        cm[0]=0;
+        //outlet dirichlet
+        am[0]=0;
+        bm[0]=1;
+        cm[0]=0;
+        for (k=1; k<kmax; k++)
         {
-            i=1;
-            for (k=1; k<kend-1; ++k)
-            {
-                ik=(i-1)+(k-1)*kk;
-                ijk=(i-1)+j*jj+k*kk; //"in boundary"
-                p2d[ik]-=xin.*dxidxi; //needs to be the BC in
-            }
-            i=iend-2;
-            for (k=1; k<kend-1; ++k)
-            {
-                ik=(i-1)+(k-1)*kk;
-                ijk=(i+1)+j*jj+k*kk; //"out boundary"
-                p2d[ik]-=work3d[ijk].*dxidxi;
-            }
-        } //end if j==0
+            y_blktri[k][0]=p_in;
+            y_blktri[k][imax-1]=p_out;
+        }
 */
         // for bottom, p=psrf. for top, dp/dz=0
         an[0]=0;
@@ -304,8 +299,8 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         cn[kend-1]=0;
         for (i=1; i<imax; ++i)
         {
-            y[0][i]=psrf; //what is psrf?
-            y[kend-1][i]=0;
+            y_blktri[0][i]=work3d[0]; //what is psrf? is it p[0] for now?
+            y_blktri[kend-1][i]=0;
         }
 
         //solve the block tridiagonal system
@@ -320,9 +315,11 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
             {
                 ijk=i+j*jj+k*kk; //j is fixed
                 ik=(i-1)+(k-1)*kk;
-                work3d[ijk]=w_blktri[k][i];
+                work3d[ijk]=TF(w_blktri[k][i]);
             }
     } // end of y-wavenumber loop
+    fields.release(y_blktri)
+    fields.release(w_blktri)
 
     fft_1D.exec_backward(p, work3d); //mz
 
