@@ -33,11 +33,11 @@ template<typename> class Grid;
 template<typename> class Fields;
 
 template<typename TF>
-class PRES_5 : public Pres<TF>
+class Pres_5 : public Pres<TF>
 {
     public:
-        PRES_5(Master&, Grid<TF>&, Fields<TF>&, FFT<TF>&, Input&);
-        ~PRES_5();
+        Pres_5(Master&, Grid<TF>&, Fields<TF>&, FFT<TF>&, Input&);
+        ~Pres_5();
 
         void init();
         void set_values();
@@ -60,17 +60,19 @@ class PRES_5 : public Pres<TF>
 
 //        std::vector<TF> bmati;
         std::vector<TF> bmatj;
-        std::vector<TF> a;
-        std::vector<TF> b; //mz
-        std::vector<TF> c;
+        std::vector<double> am;
+        std::vector<double> bm; //mz
+        std::vector<double> cm;
+        std::vector<double> an;
+        std::vector<double> bn;
+        std::vector<double> cn;
         std::vector<TF> work2d;
         std::vector<TF> p2d;
-        std::vector<TF> pout;
 
         #ifdef USECUDA
         using Pres<TF>::make_cufft_plan;
-        using Pres<TF>::fft_forward;
-        using Pres<TF>::fft_backward;
+        using Pres<TF>::fft_forward_1D;
+        using Pres<TF>::fft_backward_1D;
 
 //        TF* bmati_g; //mz
         TF* bmatj_g;

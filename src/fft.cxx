@@ -370,6 +370,38 @@ namespace
     }
 
     template<typename TF>
+    void fft_forward_1D(TF* const restrict data,   TF* const restrict tmp1,
+                     TF* const restrict fftinj, TF* const restrict fftoutj,
+                     fftw_plan& jplanf, fftwf_plan& jplanff,
+                     const Grid_data<TF>& gd, Transpose<TF>& transpose)
+    {
+        int kk = gd.iblock*gd.jtot;
+
+        // Process the fourier transforms slice by slice in Y only
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftinj[ij] = data[ijk];
+            }
+
+            fftw_execute_wrapper<TF>(jplanf, jplanff);
+
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                // shift to use p in pressure solver
+                data[ijk] = fftoutj[ij];
+            }
+        }
+    }
+
+    template<typename TF>
     void fft_backward(TF* const restrict data,   TF* const restrict tmp1,
                       TF* const restrict fftini, TF* const restrict fftouti,
                       TF* const restrict fftinj, TF* const restrict fftoutj,
@@ -426,6 +458,38 @@ namespace
             }
         }
     }
+
+    template<typename TF>
+    void fft_backward_1D(TF* const restrict data,   TF* const restrict tmp1,
+                      TF* const restrict fftinj, TF* const restrict fftoutj,
+                      fftw_plan& jplanb, fftwf_plan& jplanbf,
+                      const Grid_data<TF>& gd, Transpose<TF>& transpose)
+    {
+        int kk = gd.iblock*gd.jtot;
+
+        // transform the y-direction transform back
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftinj[ij] = data[ijk];
+            }
+
+            fftw_execute_wrapper<TF>(jplanb, jplanbf);
+
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                data[ijk] = fftoutj[ij] / gd.jtot;
+            }
+        }
+    }
+
 
     #else
     template<typename TF>
@@ -496,6 +560,49 @@ namespace
     }
 
     template<typename TF>
+    void fft_forward_1D(TF* const restrict data,   TF* const restrict tmp1,
+                     //TF* const restrict fftini, TF* const restrict fftouti,
+                     TF* const restrict fftinj, TF* const restrict fftoutj,
+                     //fftw_plan& iplanf, fftwf_plan& iplanff,
+                     fftw_plan& jplanf, fftwf_plan& jplanff,
+                     const Grid_data<TF>& gd, Transpose<TF>& transpose)
+    {
+        // Transpose the pressure field.
+        transpose.exec_zx(tmp1, data); //do we still need this for 1D?
+
+        // Transpose again.
+        transpose.exec_xy(data, tmp1); //do we still need this for 1D?
+
+        int kk = gd.iblock*gd.jtot;
+
+        // Do the y direction fourier transform.
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftinj[ij] = data[ijk];
+            }
+
+            fftw_execute_wrapper<TF>(jplanf, jplanff);
+
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                // Shift to use p in pressure solver.
+                tmp1[ijk] = fftoutj[ij];
+            }
+        }
+
+        // Transpose back to original orientation.
+        transpose.exec_yz(data, tmp1); //do we still need this for 1D?
+    }
+
+    template<typename TF>
     void fft_backward(TF* const restrict data,   TF* const restrict tmp1,
                       TF* const restrict fftini, TF* const restrict fftouti,
                       TF* const restrict fftinj, TF* const restrict fftoutj,
@@ -561,6 +668,49 @@ namespace
         // And transpose back...
         transpose.exec_xz(tmp1, data);
     }
+
+    template<typename TF>
+    void fft_backward(TF* const restrict data,   TF* const restrict tmp1,
+                      //TF* const restrict fftini, TF* const restrict fftouti,
+                      TF* const restrict fftinj, TF* const restrict fftoutj,
+                      //fftw_plan& iplanb, fftwf_plan& iplanbf,
+                      fftw_plan& jplanb, fftwf_plan& jplanbf,
+                      const Grid_data<TF>& gd, Transpose<TF>& transpose)
+    {
+        // Transpose back to y.
+        transpose.exec_zy(tmp1, data);
+
+        int kk = gd.iblock*gd.jtot;
+
+        // Transform the second transform back.
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftinj[ij] = tmp1[ijk];
+            }
+
+            fftw_execute_wrapper<TF>(jplanb, jplanbf);
+
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                data[ijk] = fftoutj[ij] / gd.jtot;
+            }
+        }
+
+        // Transpose back to x.
+        transpose.exec_yx(tmp1, data);
+
+        // And transpose back...
+        transpose.exec_xz(tmp1, data);
+    }
+
     #endif
 }
 
@@ -576,6 +726,18 @@ void FFT<TF>::exec_backward(TF* const restrict data, TF* const restrict tmp1)
 {
     fft_backward(data, tmp1, fftini, fftouti, fftinj, fftoutj,
             iplanb, iplanbf, jplanb, jplanbf, grid.get_grid_data(), transpose);
+}
+
+template<typename TF>
+void FFT<TF>::exec_forward_1D(TF* const restrict data, TF* const restrict tmp1)
+{
+    fft_forward_1D(data, tmp1, fftinj, fftoutj, jplanf, jplanff, grid.get_grid_data(), transpose);
+}
+
+template<typename TF>
+void FFT<TF>::exec_backward_1D(TF* const restrict data, TF* const restrict tmp1)
+{
+    fft_backward_1D(data, tmp1, fftinj, fftoutj, jplanb, jplanbf, grid.get_grid_data(), transpose);
 }
 
 template class FFT<double>;

@@ -67,6 +67,8 @@ class Pres
         void make_cufft_plan();
         void fft_forward (TF*, TF*, TF*);
         void fft_backward(TF*, TF*, TF*);
+        void fft_forward_1D (TF*, TF*, TF*);
+        void fft_backward_1D(TF*, TF*, TF*);
 
         bool FFT_per_slice;
         cufftHandle iplanf;
