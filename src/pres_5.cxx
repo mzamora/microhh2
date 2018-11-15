@@ -28,12 +28,12 @@
 #include "master.h"
 #include "grid.h"
 #include "fields.h"
-#include "fft_1D.h"
+#include "fft.h"
 #include "pres_5.h"
 #include "defines.h"
 
 template<typename TF>
-Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT_1D<TF>& fftin, Input& inputin) :
+Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
     Pres<TF>(masterin, gridin, fieldsin, fftin, inputin),
     boundary_cyclic(master, grid)
 {
@@ -146,7 +146,7 @@ void Pres_5<TF>::set_values()
 //        a[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc  ]*gd.dzhi[k+gd.kgc  ];
 //        c[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc+1]*gd.dzhi[k+gd.kgc+1];
 //    }
-//}
+}
 
 template<typename TF>
 void Pres_5<TF>::input(TF* const restrict p,
@@ -198,9 +198,12 @@ namespace
     // Wrapper function for calling the block tridiagonal solver (blktri from FISHPACK)
     extern "C"
     {
-    void c_blktri(int *iflag, int *np, int *n, double *an, double *bn, double *cn,
-            int *mp, int *m, double *am, double *bm, double *cm, int *idimy, double *y,
-            int *ierror, double *w, int *k);
+    void c_blktri(int*, const int*, const int*, double*, double*, double*,
+            const int*, const int*, double*, double*, double*, const int*, double*,
+            int*, double*, int*);
+    //void c_blktri(int iflag, int np, int n, double an, double bn, double cn,
+    //        int mp, int m, double am, double bm, double cm, int idimy, double y,
+    //        int ierror, double w, int k);
     }
 }
 
@@ -219,42 +222,41 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     const int igc    = gd.igc;
     const int jgc    = gd.jgc;
     const int kgc    = gd.kgc;
-    const TF dxidxi = 1./(gd.dx*gd.dx);
-    const int np; //integer=0 if periodic bs in the x direction
-    const int k_blktri; //dimension of w_blktri
-    auto w_blktri=fields.get_tmp(); //lu decomposition in blktri
-    auto y_blktri=fields.get_tmp(); //right hand size, then output in blktri
-
+    const TF dxidxi = 1./(gd.dx*gd.dx); //initialized as zeros
     int i,j,k,jj,kk,ijk,ik;
     int iindex,jindex;
+    
+    //blktri variables
+    int iflag; //
+    const int mp=1; // non periodic in the z direction
+    const int np=0; //integer=0 if periodic bs in the x direction
+    int k_blktri=1; //dimension of w_blktri
+    std::vector<double> y_blktri(imax*kmax); //right hand size, then output in blktri
+    int ierror;
+        
 
-    y_blktri.resize(kmax,imax);
-
-    fft_1D.exec_forward(p, work3d); //mz: fft only in the y direction
+    fft.exec_forward_1D(p, work3d); //mz: fft only in the y direction
     //work3d is the output of the fft
 
-    jj = iblock;
-    kk = iblock*jblock;
-
-    //if periodic in x
-    np=0;
+    jj = imax;//iblock;
+    kk = imax*jmax; //iblock*jblock;
 
     // initialize w as a zero array of dimension k_blktri
-    k_blktri=int(log(kmax)/log(2.))+1;
-    k_blktri=(k_blktri-2)*(2**(k_blktri+1))+k_blktri+5+max(2*kmax,6*imax);
-    w_blktri.resize(k_blktri);
+    k_blktri=int(log(double(kmax))/log(2.))+1;
+    k_blktri=(k_blktri-2)*int(std::pow(2,k_blktri+1))+k_blktri+5+std::max(2*kmax,6*imax);
+    std::vector<double> w_blktri(k_blktri); //initialized as zeros
 
     // coefficients for the block tridiagonals don't change for each wavenumber
     for (k=0; k<kmax; ++k)
     {
-        an[k]=1./gd.dz[k+kgc]./gd.dz[k+kgc];
+        an[k]=1./gd.dz[k+kgc]/gd.dz[k+kgc];
         bn[k]=-2.*an[k];
         cn[k]=an[k]; //it's the same as an for uniform z grid
     }
     for (i=0; i<imax; ++i)
     {
         am[i]=dxidxi;
-        bm[i]=-2.*dxidxi;
+        bm[i]=-2.*dxidxi+bmatj[j]*bmatj[j]; //we include the wavenumbers here
         cm[i]=am[i]; //it's the same as am for uniform x grid
     }
 
@@ -270,11 +272,12 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
                 ik=i+k*kk;
                 ijk=i+j*jj+k*kk;
 
-                // right hand side from 3d semispectral pressure field
-                y_blktri[k][i]=work3d[ijk];
+                // from 3d semispectral pressure field
+                y_blktri[i+k*imax]=double(work3d[ijk]);
             }
 
-        // first approach: BCs in x in and x out are periodic, so we don't deal with rhs stuff there
+// first approach: BCs in x in and x out are periodic, so we don't deal with rhs stuff there
+
 /*
        //inlet dirichlet
         am[0]=0;
@@ -294,34 +297,33 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         an[0]=0;
         bn[0]=1;
         cn[0]=0;
-        an[kend-1]=-1;
-        bn[kend-1]=1;
-        cn[kend-1]=0;
+        an[kmax-1]=-1;
+        bn[kmax-1]=1;
+        cn[kmax-1]=0;
         for (i=1; i<imax; ++i)
         {
-            y_blktri[0][i]=work3d[0]; //what is psrf? is it p[0] for now?
-            y_blktri[kend-1][i]=0;
+            y_blktri[i]=double(work3d[0]); //what is psrf? is it p[0] or work3d[0]?
+            y_blktri[(kmax-1)*imax+i]=0.;
         }
 
         //solve the block tridiagonal system
         //blktri: initialize : if xperiodic, mp=1. np never periodic~z direction
-        c_blktri(0,np,kmax,an,bn,an,1,imax,am,bm+bmatj[j]*bmatj[j],am,imax,y_blktri,ierror,w_blktri,k_blktri);
+        iflag=0;
+        c_blktri(&iflag,&np,&kmax,&an[0],&bn[0],&cn[0],&mp,&imax,&am[0],&bm[0],&cm[0],&imax,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
         //blktri: solve
-        c_blktri(1,np,kmax,an,bn,an,1,imax,am,bm+bmatj[j]*bmatj[j],am,imax,y_blktri,ierror,w_blktri,k_blktri);
+        iflag=1;
+        c_blktri(&iflag,&np,&kmax,&an[0],&bn[0],&cn[0],&mp,&imax,&am[0],&bm[0],&cm[0],&imax,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
 
         //append pseudospectral slice into the 3d matrix
-        for (k=1; k<kend-1; ++k)
-            for (i=1; i<iblock-1; ++i)
+        for (k=1; k<kmax; ++k)
+            for (i=1; i<imax; ++i)
             {
                 ijk=i+j*jj+k*kk; //j is fixed
-                ik=(i-1)+(k-1)*kk;
-                work3d[ijk]=TF(w_blktri[k][i]);
-            }
+                work3d[ijk]=TF(w_blktri[i+k*imax]);
+            }            
     } // end of y-wavenumber loop
-    fields.release(y_blktri)
-    fields.release(w_blktri)
-
-    fft_1D.exec_backward(p, work3d); //mz
+    
+    fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
 
     jj = imax;
     kk = imax*jmax;

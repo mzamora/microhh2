@@ -38,6 +38,9 @@ class FFT
 
         void exec_forward (TF* const restrict, TF* const restrict);
         void exec_backward(TF* const restrict, TF* const restrict);
+        
+        void exec_forward_1D (TF* const restrict, TF* const restrict);
+        void exec_backward_1D(TF* const restrict, TF* const restrict);
 
         void init();
         void load();
