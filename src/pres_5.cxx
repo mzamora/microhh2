@@ -24,13 +24,26 @@
 
 #include <cstdio>
 #include <cmath>
-#include <algorithm>
+#include <algorithm>                
 #include "master.h"
 #include "grid.h"
 #include "fields.h"
 #include "fft.h"
 #include "pres_5.h"
 #include "defines.h"
+// namespace
+// {
+    // Wrapper function for calling the block tridiagonal solver (blktri from FISHPACK)
+
+extern "C"      
+{
+    extern void c_blktri(int*, const int*, const int*, double*, double*, double*, const int*, const int*, double*, double*, double*, const int*, double*, int*, double*, int*);
+    //void c_blktri(int iflag, int np, int n, double an, double bn, double cn,
+    //        int mp, int m, double am, double bm, double cm, int idimy, double y,
+    //        int ierror, double w, int k);
+}
+
+// }         
 
 template<typename TF>
 Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
@@ -45,7 +58,7 @@ Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT
     p2d_g = 0;
     bmatj_g  = 0;
     pout = 0;
-    #endif
+    #endif  
 }
 
 template<typename TF>
@@ -191,20 +204,6 @@ void Pres_5<TF>::input(TF* const restrict p,
                         + ( rhorefh[k+kgc+1] * (wt[ijk+kk] + w[ijk+kk] * dti)
                           - rhorefh[k+kgc  ] * (wt[ijk   ] + w[ijk   ] * dti) ) * dzi[k+kgc];
             }
-}
-
-namespace
-{
-    // Wrapper function for calling the block tridiagonal solver (blktri from FISHPACK)
-    extern "C"
-    {
-    void c_blktri(int*, const int*, const int*, double*, double*, double*,
-            const int*, const int*, double*, double*, double*, const int*, double*,
-            int*, double*, int*);
-    //void c_blktri(int iflag, int np, int n, double an, double bn, double cn,
-    //        int mp, int m, double am, double bm, double cm, int idimy, double y,
-    //        int ierror, double w, int k);
-    }
 }
 
 template<typename TF>

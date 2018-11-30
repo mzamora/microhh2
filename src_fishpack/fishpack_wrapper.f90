@@ -13,7 +13,7 @@ contains
 subroutine c_blktri &
             (iflg, np, n, an, bn, cn, mp, &
              m, am, bm, cm, idimy, y, &
-             ierror, w, k) bind(c)
+             ierror, w, k) bind(c,name="c_blktri")
       integer(c_int), intent(in):: iflg       ! initialization flag
                                               ! 0: initialization only. work array w 
                                               ! 1: initialized quantities used to solve x
