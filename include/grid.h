@@ -29,6 +29,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include "defines.h"
 #include "transpose.h"
 
@@ -80,12 +81,12 @@ struct Grid_data
     TF dxi;   // Reciprocal of dx.
     TF dyi;   // Reciprocal of dy.
 
-    std::vector<TF> dz;    // Distance between the center of two grid cell in the z-direction.
-    std::vector<TF> dzh;   // Distance between the two grid cell faces in the z-direction.
+    std::vector<TF> dz;    // Distance between the faces of two grid cells in the z-direction.
+    std::vector<TF> dzh;   // Distance between the centers of two grid cells in the z-direction.
     std::vector<TF> dzi;   // Reciprocal of dz.
     std::vector<TF> dzhi;  // Reciprocal of dzh.
-    std::vector<TF> dzi4;  // Fourth order gradient of the distance between cell centers to be used in 4th-order schemes.
-    std::vector<TF> dzhi4; // Fourth order gradient of the distance between cell faces to be used in 4th-order schemes.
+    std::vector<TF> dzi4;  // Fourth order gradient of the distance between cell faces to be used in 4th-order schemes.
+    std::vector<TF> dzhi4; // Fourth order gradient of the distance between cell centers to be used in 4th-order schemes.
 
     TF dzhi4bot;
     TF dzhi4top;
@@ -96,6 +97,13 @@ struct Grid_data
     std::vector<TF> xh; // Grid coordinate of cell faces in x-direction.
     std::vector<TF> yh; // Grid coordinate of cell faces in x-direction.
     std::vector<TF> zh; // Grid coordinate of cell faces in x-direction.
+
+    const std::array<int,3> uloc  = {{1,0,0}}; // Location of the u-velocity on the staggered grid
+    const std::array<int,3> vloc  = {{0,1,0}}; // Location of the v-velocity on the staggered grid
+    const std::array<int,3> wloc  = {{0,0,1}}; // Location of the w-velocity on the staggered grid
+    const std::array<int,3> sloc  = {{0,0,0}}; // Location of the cell center on the staggered grid
+    const std::array<int,3> uwloc = {{1,0,1}}; // Location of the u-flux on the staggered grid
+    const std::array<int,3> vwloc = {{0,1,1}}; // Location of the v-flux on the staggered grid
 
     int ithread_block; // Number of grid cells in the x-direction for GPU thread block.
     int jthread_block; // Number of grid cells in the y-direction for GPU thread block.

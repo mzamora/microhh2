@@ -27,6 +27,7 @@
 #include "input.h"
 #include "grid.h"
 #include "fields.h"
+#include "diff.h"
 #include "defines.h"
 #include "timeloop.h"
 #include "timedep.h"
@@ -37,7 +38,7 @@
 // Boundary schemes.
 #include "boundary.h"
 #include "boundary_surface.h"
-// #include "boundary_surface_bulk.h"
+#include "boundary_surface_bulk.h"
 // #include "boundary_surface_patch.h"
 // #include "boundary_patch.h"
 
@@ -117,8 +118,6 @@ std::string Boundary<TF>::get_switch()
 template<typename TF>
 void Boundary<TF>::process_bcs(Input& input)
 {
-    int nerror = 0;
-
     std::string swbot = input.get_item<std::string>("boundary", "mbcbot", "");
     std::string swtop = input.get_item<std::string>("boundary", "mbctop", "");
 
@@ -138,8 +137,8 @@ void Boundary<TF>::process_bcs(Input& input)
         mbcbot = Boundary_type::Ustar_type;
     else
     {
-        master.print_error("%s is illegal value for mbcbot\n", swbot.c_str());
-        nerror++;
+        std::string msg = swbot + " is an illegal value for mbcbot";
+        throw std::runtime_error(msg);
     }
 
     // set the top bc
@@ -153,8 +152,8 @@ void Boundary<TF>::process_bcs(Input& input)
         mbctop = Boundary_type::Ustar_type;
     else
     {
-        master.print_error("%s is illegal value for mbctop\n", swtop.c_str());
-        nerror++;
+        std::string msg = swtop + " is an illegal value for mbctop";
+        throw std::runtime_error(msg);
     }
 
     // read the boundaries per field
@@ -175,8 +174,8 @@ void Boundary<TF>::process_bcs(Input& input)
             sbc.at(it.first).bcbot = Boundary_type::Flux_type;
         else
         {
-            master.print_error("%s is illegal value for sbcbot\n", swbot.c_str());
-            nerror++;
+            std::string msg = swbot + " is an illegal value for sbcbot";
+            throw std::runtime_error(msg);
         }
 
         // set the top bc
@@ -188,13 +187,11 @@ void Boundary<TF>::process_bcs(Input& input)
             sbc.at(it.first).bctop = Boundary_type::Flux_type;
         else
         {
-            master.print_error("%s is illegal value for sbctop\n", swtop.c_str());
-            nerror++;
+            std::string msg = swbot + " is an illegal value for sbctop";
+            throw std::runtime_error(msg);
         }
     }
 
-    if (nerror)
-        throw 1;
 }
 
 template<typename TF>
@@ -203,17 +200,11 @@ void Boundary<TF>::init(Input& input, Thermo<TF>& thermo)
     // Read the boundary information from the ini files, it throws at error.
     process_bcs(input);
 
-    int nerror = 0;
-
     // there is no option (yet) for prescribing ustar without surface model
     if (mbcbot == Boundary_type::Ustar_type || mbctop == Boundary_type::Ustar_type)
     {
-        master.print_error("ustar bc is not supported for default boundary\n");
-        ++nerror;
-    }
-
-    if (nerror)
         throw std::runtime_error("Cannot use ustar bc for default boundary");
+    }
 
     // Initialize the boundary cyclic.
     boundary_cyclic.init();
@@ -235,27 +226,27 @@ void Boundary<TF>::process_time_dependent(Input& input)
 
     if (swtimedep)
     {
-        // create temporary list to check which entries are used
+        // Create temporary list to check which entries are used.
         std::vector<std::string> tmplist = timedeplist;
 
-        // see if there is data available for the surface boundary conditions
+        // See if there is data available for the surface boundary conditions.
         for (auto& it : fields.sp)
         {
             std::string name = it.first+"_sbot";
             if (std::find(timedeplist.begin(), timedeplist.end(), name) != timedeplist.end())
             {
-                // Process the time dependent data
+                // Process the time dependent data.
                 tdep_bc.emplace(it.first, new Timedep<TF>(master, grid, name, true));
                 tdep_bc.at(it.first)->create_timedep();
 
-                // remove the item from the tmplist
+                // Remove the item from the tmplist.
                 std::vector<std::string>::iterator ittmp = std::find(tmplist.begin(), tmplist.end(), name);
                 if (ittmp != tmplist.end())
                     tmplist.erase(ittmp);
             }
         }
 
-        // display a warning for the non-supported
+        // Display a warning for the non-supported.
         for (std::vector<std::string>::const_iterator ittmp=tmplist.begin(); ittmp!=tmplist.end(); ++ittmp)
             master.print_warning("%s is not supported (yet) as a time dependent parameter\n", ittmp->c_str());
     }
@@ -635,7 +626,7 @@ void Boundary<TF>::exec_cross()
 */
 
 template<typename TF>
-void Boundary<TF>::exec_stats(Stats<TF>&, std::string, Field3d<TF>&, Field3d<TF>&)
+void Boundary<TF>::exec_stats(Stats<TF>&)
 {
 }
 
@@ -741,8 +732,6 @@ std::shared_ptr<Boundary<TF>> Boundary<TF>::factory(Master& master, Grid<TF>& gr
     std::string swboundary;
     swboundary = input.get_item<std::string>("boundary", "swboundary", "", "default");
 
-    // if (swboundary == "surface_bulk")
-    //     return new Boundary_surface_bulk(modelin, inputin);
     // else if (swboundary == "surface_patch")
     //     return new Boundary_surface_patch(modelin, inputin);
     // else if (swboundary == "patch")
@@ -752,10 +741,12 @@ std::shared_ptr<Boundary<TF>> Boundary<TF>::factory(Master& master, Grid<TF>& gr
         return std::make_shared<Boundary<TF>>(master, grid, fields, input);
     else if (swboundary == "surface")
         return std::make_shared<Boundary_surface<TF>>(master, grid, fields, input);
+    else if (swboundary == "surface_bulk")
+        return std::make_shared<Boundary_surface_bulk<TF>>(master, grid, fields, input);
     else
     {
-        master.print_error("\"%s\" is an illegal value for swboundary\n", swboundary.c_str());
-        throw std::runtime_error("Illegal value for swboundary");
+        std::string msg = swboundary + " is an illegal value for swboundary";
+        throw std::runtime_error(msg);
     }
 }
 /*

@@ -42,7 +42,7 @@ class Timedep
         void create_timedep();
         void update_time_dependent(TF&, Timeloop<TF>&);
 
-        void create_timedep_prof();
+        void create_timedep_prof(TF);
         void update_time_dependent_prof(std::vector<TF>&, Timeloop<TF>&);
 
         #ifdef USECUDA
@@ -61,6 +61,5 @@ class Timedep
 
         std::vector<double> time;
         std::vector<TF> data;
-
 };
 #endif

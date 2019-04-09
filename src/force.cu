@@ -19,7 +19,8 @@
  * You should have received a copy of the GNU General Public License
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#include <algorithm>
+#include <iostream>
 #include "master.h"
 #include "grid.h"
 #include "fields.h"
@@ -189,6 +190,34 @@ namespace
         }
     }
 
+    template<typename TF>
+    int calc_zi(const TF* const restrict fldmean, const int kstart, const int kend, const int plusminus)
+    {
+        TF maxgrad = 0.;
+        TF grad = 0.;
+        int kinv = kstart;
+        for (int k=kstart+1; k<kend; ++k)
+        {
+            grad = plusminus * (fldmean[k] - fldmean[k-1]);
+            if (grad > maxgrad)
+            {
+                maxgrad = grad;
+                kinv = k;
+            }
+        }
+        return kinv;
+    }
+
+    template<typename TF>
+    void rescale_nudgeprof(TF* const restrict fldmean, const int kinv, const int kstart, const int kend)
+    {
+        for (int k=kstart+1; k<kinv; ++k)
+            fldmean[k] = fldmean[kstart];
+
+        for (int k=kinv+1; k<kend-2; ++k)
+            fldmean[k] = fldmean[kend-1];
+    }
+
     template<typename TF> __global__
     void calc_time_dependent_prof_g(TF* const __restrict__ prof, const TF* const __restrict__ data,
                                     const double fac0, const double fac1,
@@ -249,28 +278,28 @@ void Force<TF>::prepare_device()
 template<typename TF>
 void Force<TF>::clear_device()
 {
-    if (swlspres== Large_scale_pressure_type::geo_wind)
+    if (swlspres == Large_scale_pressure_type::geo_wind)
     {
         cuda_safe_call(cudaFree(ug_g));
         cuda_safe_call(cudaFree(vg_g));
-        for(auto& it : tdep_geo)
+        for (auto& it : tdep_geo)
             it.second->clear_device();
     }
 
     if (swls == Large_scale_tendency_type::enabled)
     {
-        for(auto& it : lsprofs_g)
+        for (auto& it : lsprofs_g)
             cuda_safe_call(cudaFree(it.second));
-        for(auto& it : tdep_ls)
+        for (auto& it : tdep_ls)
             it.second->clear_device();
     }
 
     if (swnudge == Nudging_type::enabled)
     {
-        for(auto& it : nudgeprofs_g)
+        for (auto& it : nudgeprofs_g)
             cuda_safe_call(cudaFree(it.second));
         cuda_safe_call(cudaFree(nudge_factor_g));
-        for(auto& it : tdep_nudge)
+        for (auto& it : tdep_nudge)
             it.second->clear_device();
 
     }
@@ -310,8 +339,8 @@ void Force<TF>::exec(double dt)
             fields.mt.at("u")->fld_g,
             fbody,
             gd.icells, gd.ijcells,
-            gd.istart,  gd.jstart, gd.kstart,
-            gd.iend,    gd.jend,   gd.kend);
+            gd.istart, gd.jstart, gd.kstart,
+            gd.iend,   gd.jend,   gd.kend);
         cuda_check_error();
     }
     else if (swlspres== Large_scale_pressure_type::geo_wind)
@@ -323,8 +352,8 @@ void Force<TF>::exec(double dt)
                 fields.mp.at("u")->fld_g, fields.mp.at("v")->fld_g,
                 ug_g, vg_g, fc, grid.utrans, grid.vtrans,
                 gd.icells, gd.ijcells,
-                gd.istart,  gd.jstart, gd.kstart,
-                gd.iend,    gd.jend,   gd.kend);
+                gd.istart, gd.jstart, gd.kstart,
+                gd.iend,   gd.jend,   gd.kend);
             cuda_check_error();
         }
         else if (grid.get_spatial_order() == Grid_order::Fourth)
@@ -334,8 +363,8 @@ void Force<TF>::exec(double dt)
                 fields.mp.at("u")->fld_g, fields.mp.at("v")->fld_g,
                 ug_g, vg_g, fc, grid.utrans, grid.vtrans,
                 gd.icells, gd.ijcells,
-                gd.istart,  gd.jstart, gd.kstart,
-                gd.iend,    gd.jend,   gd.kend);
+                gd.istart, gd.jstart, gd.kstart,
+                gd.iend,   gd.jend,   gd.kend);
             cuda_check_error();
         }
     }
@@ -346,8 +375,8 @@ void Force<TF>::exec(double dt)
         {
             large_scale_source_g<<<gridGPU, blockGPU>>>(
                 fields.st.at(it)->fld_g, lsprofs_g.at(it),
-                gd.istart,  gd.jstart, gd.kstart,
-                gd.iend,    gd.jend,   gd.kend,
+                gd.istart, gd.jstart, gd.kstart,
+                gd.iend,   gd.jend,   gd.kend,
                 gd.icells, gd.ijcells);
             cuda_check_error();
         }
@@ -357,11 +386,20 @@ void Force<TF>::exec(double dt)
     {
         for (auto& it : nudgelist)
         {
+            auto it1 = std::find(scalednudgelist.begin(), scalednudgelist.end(), it);
+            if (it1 != scalednudgelist.end())
+            {
+                cudaMemcpy(fields.sp.at(it)->fld_mean.data(), fields.sp.at(it)->fld_mean_g, gd.kcells*sizeof(TF), cudaMemcpyDeviceToHost);
+                const int kinv = calc_zi(fields.sp.at("thl")->fld_mean.data(), gd.kstart, gd.kend, 1);
+                rescale_nudgeprof(nudgeprofs.at(it).data(), kinv, gd.kstart, gd.kend);
+                cudaMemcpy(nudgeprofs_g.at(it), nudgeprofs.at(it).data(), gd.kcells*sizeof(TF), cudaMemcpyHostToDevice);
+            }
+
             nudging_tendency_g<<<gridGPU, blockGPU>>>(
                 fields.st.at(it)->fld_g, fields.sp.at(it)->fld_mean_g,
                 nudgeprofs_g.at(it), nudge_factor_g,
-                gd.istart,  gd.jstart, gd.kstart,
-                gd.iend,    gd.jend,   gd.kend,
+                gd.istart, gd.jstart, gd.kstart,
+                gd.iend,   gd.jend,   gd.kend,
                 gd.icells, gd.ijcells);
             cuda_check_error();
         }
@@ -373,8 +411,8 @@ void Force<TF>::exec(double dt)
         {
             advec_wls_2nd_g<<<gridGPU, blockGPU>>>(
                 fields.st.at(it.first)->fld_g, fields.sp.at(it.first)->fld_mean_g, wls_g, gd.dzhi_g,
-                gd.istart,  gd.jstart, gd.kstart,
-                gd.iend,    gd.jend,   gd.kend,
+                gd.istart, gd.jstart, gd.kstart,
+                gd.iend,   gd.jend,   gd.kend,
                 gd.icells, gd.ijcells);
             cuda_check_error();
         }
@@ -386,19 +424,26 @@ void Force<TF>::exec(double dt)
 template <typename TF>
 void Force<TF>::update_time_dependent(Timeloop<TF>& timeloop)
 {
-    for (auto& it : tdep_ls)
-        it.second->update_time_dependent_prof_g(lsprofs_g[it.first],timeloop);
+    if (swls == Large_scale_tendency_type::enabled)
+    {
+        for (auto& it : tdep_ls)
+            it.second->update_time_dependent_prof_g(lsprofs_g[it.first],timeloop);
+    }
 
-    for (auto& it : tdep_nudge)
-        it.second->update_time_dependent_prof_g(nudgeprofs_g[it.first],timeloop);
+    if (swnudge == Nudging_type::enabled)
+    {
+        for (auto& it : tdep_nudge)
+            it.second->update_time_dependent_prof_g(nudgeprofs_g[it.first],timeloop);
+    }
 
     if (swlspres == Large_scale_pressure_type::geo_wind)
     {
-        tdep_geo.at("ug")->update_time_dependent_prof_g(ug_g, timeloop);
-        tdep_geo.at("vg")->update_time_dependent_prof_g(vg_g, timeloop);
+        tdep_geo.at("ug")->update_time_dependent_prof(ug, timeloop);
+        tdep_geo.at("vg")->update_time_dependent_prof(vg, timeloop);
     }
 
-    tdep_wls->update_time_dependent_prof_g(wls_g, timeloop);
+    if (swwls == Large_scale_subsidence_type::enabled)
+        tdep_wls->update_time_dependent_prof_g(wls_g, timeloop);
 }
 #endif
 

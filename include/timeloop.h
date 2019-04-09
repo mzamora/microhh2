@@ -20,12 +20,14 @@
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #ifndef TIMELOOP
 #define TIMELOOP
 
 #include <sys/time.h>
 #include <string>
 #include <vector>
+#include <time.h>
 
 class Master;
 template<typename> class Grid;
@@ -35,10 +37,10 @@ enum class Sim_mode;
 
 
 template<typename TF>
-struct interpolation_factors
+struct Interpolation_factors
 {
-    int index0;
-    int index1;
+    unsigned int index0;
+    unsigned int index1;
     TF fac0;
     TF fac1;
 };
@@ -58,7 +60,7 @@ class Timeloop
         void set_time_step_limit(unsigned long);
         double get_sub_time_step();
 
-        interpolation_factors<TF> get_interpolation_factors(std::vector<double>);
+        Interpolation_factors<TF> get_interpolation_factors(const std::vector<double>&);
 
         void exec();
 
@@ -82,6 +84,7 @@ class Timeloop
         unsigned long get_idt()   { return idt;   }
         int get_iotime()    { return iotime;    }
         int get_iteration() { return iteration; }
+        struct tm get_phytime() { return datetime; }
 
     private:
         Master& master;
@@ -108,6 +111,7 @@ class Timeloop
         double endtime;
         double savetime;
         double postproctime;
+        struct tm datetime;
 
         int iteration;
         int iotime;
