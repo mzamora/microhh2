@@ -147,8 +147,12 @@ endif()
 add_subdirectory(src)
 #add_subdirectory(src_rrtmg)
 <<<<<<< HEAD
+<<<<<<< HEAD
 #add_subdirectory(src_rrtmgp)
 =======
 add_subdirectory(src_fishpack)
 >>>>>>> Create blktri wrapper
+=======
+add_subdirectory(src_fishpack)
+>>>>>>> d26c8c8fb3af8d1eb45c7b0830b29c372e13fc3e
 add_subdirectory(main)
