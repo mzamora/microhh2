@@ -49,19 +49,3 @@ else()
   target_link_libraries(microhh microhhc fishpack ${LIBS} m)
   #target_link_libraries(microhh microhhc ${LIBS} m)
 endif()
-<<<<<<< HEAD
-=======
-
-# single precision version
-if(USECUDA)
-  cuda_add_executable(microhh_single microhh_single.cxx)
-  #target_link_libraries(microhh_single microhhc rrtmg ${LIBS} m)
-  target_link_libraries(microhh_single microhhc fishpack ${LIBS} m)
-  #target_link_libraries(microhh_single microhhc ${LIBS} m)
-else()
-  add_executable(microhh_single microhh_single.cxx)
-  #target_link_libraries(microhh_single microhhc rrtmg ${LIBS} m)
-  target_link_libraries(microhh_single microhhc fishpack ${LIBS} m)
-  #target_link_libraries(microhh_single microhhc ${LIBS} m)
-endif()
->>>>>>> fixing CMakeLists so it can compile

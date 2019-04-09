@@ -45,12 +45,27 @@ subroutine c_blktri &
                                               !    THAT DEPEND ON THE COEFFICIENT ARRAYS     
                                               !    AN, BN, CN.  CHECK THESE ARRAYS.          
                                               ! 5  AN(J)*CN(J-1) IS LESS THAN 0 FOR SOME J.  
+      real:: an_f(n) !Extra arrays to avoid variable type issues for real and c_doubles
+      real:: bn_f(n)
+      real:: cn_f(n)
+      real:: am_f(m)
+      real:: bm_f(m)
+      real:: cm_f(m)
+      real:: y_f(m,n)
+      real:: w_f(k)
 
+    ! Transform c_double to real
+    an_f=real(an); bn_f=real(bn); cn_f=real(cn); y_f=real(y);
+    am_f=real(am); bm_f=real(bm); cm_f=real(cm); w_f=real(w);
 
     call blktri &
-            (iflg, np, n, an, bn, cn, mp, &
-             m, am, bm, cm, idimy, y, &
-             ierror, w)
+            (iflg, np, n, an_f, bn_f, cn_f, mp, &
+             m, am_f, bm_f, cm_f, idimy, y_f, &
+             ierror, w_f)
+
+    ! Transform real to c_double (a,b,c arrays shouldn't matter)
+    y=real(y_f,c_double);
+    w=real(w_f,c_double);
 
 end subroutine c_blktri
 
