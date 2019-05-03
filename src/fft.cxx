@@ -20,6 +20,7 @@
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <iostream>
 #include "master.h"
 #include "grid.h"
 #include "fft.h"
@@ -117,7 +118,7 @@ void FFT<double>::load()
     if (n == 0)
     {
         master.print_message("FAILED\n");
-        throw std::runtime_error("Error loading FFTW Plan");
+        throw 1;
     }
     else
         master.print_message("OK\n");
@@ -162,7 +163,7 @@ void FFT<float>::load()
     if (n == 0)
     {
         master.print_message("FAILED\n");
-        throw std::runtime_error("Error loading FFTW Plan");
+        throw 1;
     }
     else
         master.print_message("OK\n");
@@ -219,7 +220,6 @@ void FFT<double>::save()
 
     has_fftw_plan = true;
 
-    int nerror = 0;
     if (master.get_mpiid() == 0)
     {
         char filename[256];
@@ -231,16 +231,11 @@ void FFT<double>::save()
         if (n == 0)
         {
             master.print_message("FAILED\n");
-            nerror++;
+            throw 1;
         }
         else
             master.print_message("OK\n");
     }
-
-    master.sum(&nerror, 1);
-
-    if (nerror)
-        throw std::runtime_error("Error saving FFTW plan");
 }
 
 template<>
@@ -270,7 +265,6 @@ void FFT<float>::save()
 
     has_fftw_plan = true;
 
-    int nerror = 0;
     if (master.get_mpiid() == 0)
     {
         char filename[256];
@@ -282,16 +276,11 @@ void FFT<float>::save()
         if (n == 0)
         {
             master.print_message("FAILED\n");
-            nerror++;
+            throw 1;
         }
         else
             master.print_message("OK\n");
     }
-
-    master.sum(&nerror, 1);
-
-    if (nerror)
-        throw std::runtime_error("Error saving FFTW plan");
 }
 
 namespace
@@ -375,13 +364,13 @@ namespace
                      fftw_plan& jplanf, fftwf_plan& jplanff,
                      const Grid_data<TF>& gd, Transpose<TF>& transpose)
     {
-        int kk = gd.iblock*gd.jtot;
+        int kk = gd.itot*gd.jtot; //gd.iblock*gd.jtot;
 
         // Process the fourier transforms slice by slice in Y only
-        for (int k=0; k<gd.kblock; ++k)
+        for (int k=0; k<gd.ktot; ++k) //kkblock
         {
             #pragma ivdep
-            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            for (int n=0; n<gd.itot*gd.jtot; ++n) //n<gd.iblock*gd.jtot //
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
@@ -391,12 +380,13 @@ namespace
             fftw_execute_wrapper<TF>(jplanf, jplanff);
 
             #pragma ivdep
-            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            for (int n=0; n<gd.itot*gd.jtot; ++n)
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
                 // shift to use p in pressure solver
-                data[ijk] = fftoutj[ij];
+                // std::cout << "fftout : " << ijk << " : " << fftoutj[ij] << "\n";
+                tmp1[ijk] = fftoutj[ij];
             }
         }
     }
@@ -409,7 +399,7 @@ namespace
                       fftw_plan& jplanb, fftwf_plan& jplanbf,
                       const Grid_data<TF>& gd, Transpose<TF>& transpose)
     {
-        int kk = gd.iblock*gd.jtot;
+        int kk = gd.itot*gd.jtot;
 
         // transform the second transform back
         for (int k=0; k<gd.kblock; ++k)
@@ -485,7 +475,8 @@ namespace
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
-                data[ijk] = fftoutj[ij] / gd.jtot;
+//                data[ijk] = fftoutj[ij] / gd.jtot;
+                tmp1[ijk] = fftoutj[ij] / gd.jtot;
             }
         }
     }
@@ -670,7 +661,7 @@ namespace
     }
 
     template<typename TF>
-    void fft_backward(TF* const restrict data,   TF* const restrict tmp1,
+    void fft_backward_1D(TF* const restrict data,   TF* const restrict tmp1,
                       //TF* const restrict fftini, TF* const restrict fftouti,
                       TF* const restrict fftinj, TF* const restrict fftoutj,
                       //fftw_plan& iplanb, fftwf_plan& iplanbf,
