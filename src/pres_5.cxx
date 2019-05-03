@@ -21,10 +21,11 @@
  * You should have received a copy of the GNU General Public License
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#include <iostream>
+#include <fstream> //to print to a file
 #include <cstdio>
 #include <cmath>
-#include <algorithm>                
+#include <algorithm>
 #include "master.h"
 #include "grid.h"
 #include "fields.h"
@@ -35,7 +36,7 @@
 // {
     // Wrapper function for calling the block tridiagonal solver (blktri from FISHPACK)
 
-extern "C"      
+extern "C"
 {
     extern void c_blktri(int*, const int*, const int*, double*, double*, double*, const int*, const int*, double*, double*, double*, const int*, double*, int*, double*, int*);
     //void c_blktri(int iflag, int np, int n, double an, double bn, double cn,
@@ -43,7 +44,7 @@ extern "C"
     //        int ierror, double w, int k);
 }
 
-// }         
+// }
 
 template<typename TF>
 Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
@@ -58,7 +59,7 @@ Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT
     p2d_g = 0;
     bmatj_g  = 0;
     pout = 0;
-    #endif  
+    #endif
 }
 
 template<typename TF>
@@ -73,6 +74,7 @@ Pres_5<TF>::~Pres_5()
 template<typename TF>
 void Pres_5<TF>::exec(const double dt)
 {
+    std::cout << "Pres exec starting..." << "\n";
     auto& gd = grid.get_grid_data();
 
     // create the input for the pressure solver
@@ -224,7 +226,9 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     const TF dxidxi = 1./(gd.dx*gd.dx); //initialized as zeros
     int i,j,k,jj,kk,ijk,ik;
     int iindex,jindex;
-    
+    int ijkp,jjp,kkp;
+
+
     //blktri variables
     int iflag; //
     const int mp=1; // non periodic in the z direction
@@ -232,10 +236,31 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     int k_blktri=1; //dimension of w_blktri
     std::vector<double> y_blktri(imax*kmax); //right hand size, then output in blktri
     int ierror;
-        
 
+
+    // for (int k=0; k<gd.kmax; ++k)
+    //     for (int j=0; j<gd.jmax; ++j)
+    //         #pragma ivdep
+    //         for (int i=0; i<gd.imax; ++i)
+    //         {
+    //             const int ijkp = i + j*gd.imax + k*gd.imax*gd.jmax;
+    //             std::cout << "In solve, p = " << p[ijkp] << "\n";
+    //         }
     fft.exec_forward_1D(p, work3d); //mz: fft only in the y direction
+//    std::cout << "FFT forward \n";
     //work3d is the output of the fft
+    std::ofstream myfile_rhs;
+    myfile_rhs.open("rhs.txt");
+    for (int k=0;k<gd.kmax; ++k)
+        for (int j=0; j<gd.jmax; ++j)
+            #pragma ivdep
+            for (int i=0; i<gd.imax; ++i)
+            {   
+                ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
+                ijk  = i + j*jj + k*kk;
+                myfile_rhs << work3d[ijkp] << "\n" ;
+            }
+    myfile_rhs.close();
 
     jj = imax;//iblock;
     kk = imax*jmax; //iblock*jblock;
@@ -246,23 +271,58 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     std::vector<double> w_blktri(k_blktri); //initialized as zeros
 
     // coefficients for the block tridiagonals don't change for each wavenumber
+    //std::cout << "kmax is " << kmax << "\n";
+    //an[0]=TF(1.); cn[kmax-1]=TF(1.);
+    std::ofstream myfile_an;
+    myfile_an.open("an.txt");
+    std::ofstream myfile_bn;
+    myfile_bn.open("bn.txt");
+    std::ofstream myfile_cn;
+    myfile_cn.open("cn.txt");
+
     for (k=0; k<kmax; ++k)
     {
         an[k]=1./gd.dz[k+kgc]/gd.dz[k+kgc];
-        bn[k]=-2.*an[k];
+        myfile_an << an[k] << "\n";
         cn[k]=an[k]; //it's the same as an for uniform z grid
+        myfile_cn << cn[k] << "\n";
+        bn[k]=-2.*an[k];
+        myfile_bn << bn[k] << "\n";
+//        std::cout << "k = " << k << " an = " << an[k] << " bn = " << bn[k] << " cn = " << cn[k] << " \n";
     }
+
+    myfile_an.close();
+    myfile_bn.close();
+    myfile_cn.close();
+    
+    std::ofstream myfile_am;
+    myfile_am.open("am.txt");
+    std::ofstream myfile_bm;
+    myfile_bm.open("bm.txt");
+    std::ofstream myfile_cm;
+    myfile_cm.open("cm.txt");
+
     for (i=0; i<imax; ++i)
     {
         am[i]=dxidxi;
+        myfile_am << am[i] << "\n";
         bm[i]=-2.*dxidxi+bmatj[j]*bmatj[j]; //we include the wavenumbers here
+        myfile_bm << bm[i] << "\n";
         cm[i]=am[i]; //it's the same as am for uniform x grid
+        myfile_cm << cm[i] << "\n";
+//        std::cout << "i = " << i << " am = " << am[i] << " bm = " << bm[k] << " cm = " << cm[i] << " \n";
     }
 
+    myfile_am.close();
+    myfile_bm.close();
+    myfile_cm.close();
+
+  //  std::cout << "jmax=" << jmax << "\n";
     // start looping through the wavenumbers in y
     for (j=0; j<jmax; j++)
     {
         //current wavenumber is bmatj[j]
+//        std::cout << "wavenumber j=" << j << " is "<< bmatj[j] << "\n";
 
         //right hand side for the block tridiag linear system
         for (k=1; k<kmax; ++k)
@@ -273,6 +333,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
 
                 // from 3d semispectral pressure field
                 y_blktri[i+k*imax]=double(work3d[ijk]);
+//                std::cout << "y_blktri(" << i+k*imax << ")=" << y_blktri[i+k*imax] << "\n";
             }
 
 // first approach: BCs in x in and x out are periodic, so we don't deal with rhs stuff there
@@ -293,41 +354,60 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         }
 */
         // for bottom, p=psrf. for top, dp/dz=0
-        an[0]=0;
-        bn[0]=1;
-        cn[0]=0;
-        an[kmax-1]=-1;
-        bn[kmax-1]=1;
-        cn[kmax-1]=0;
-        for (i=1; i<imax; ++i)
-        {
-            y_blktri[i]=double(work3d[0]); //what is psrf? is it p[0] or work3d[0]?
-            y_blktri[(kmax-1)*imax+i]=0.;
-        }
+        // THIS IS NOT WORKING, MUST BE FIXED (throws error 5 in blktri)
+//        an[0]=0;
+//        bn[0]=1;
+//        cn[0]=0;
+//        an[kmax-1]=-1;
+//        bn[kmax-1]=1;
+//        cn[kmax-1]=0;
+//        for (i=1; i<imax; ++i)
+//        {
+//            y_blktri[i]=double(work3d[0]); //what is psrf? is it p[0] or work3d[0]?
+//            y_blktri[(kmax-1)*imax+i]=0.;
+//        }
 
         //solve the block tridiagonal system
         //blktri: initialize : if xperiodic, mp=1. np never periodic~z direction
+      //  std::cout << "Initializing blktri... \n";
         iflag=0;
         c_blktri(&iflag,&np,&kmax,&an[0],&bn[0],&cn[0],&mp,&imax,&am[0],&bm[0],&cm[0],&imax,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
+        std::cout << "init blktri: " << ierror << "\n";
         //blktri: solve
         iflag=1;
         c_blktri(&iflag,&np,&kmax,&an[0],&bn[0],&cn[0],&mp,&imax,&am[0],&bm[0],&cm[0],&imax,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-
         //append pseudospectral slice into the 3d matrix
+        std::cout << "after blktri: " << ierror << "\n";
         for (k=1; k<kmax; ++k)
             for (i=1; i<imax; ++i)
             {
                 ijk=i+j*jj+k*kk; //j is fixed
-                work3d[ijk]=TF(w_blktri[i+k*imax]);
-            }            
+                work3d[ijk]=TF(y_blktri[i+k*imax]); // is it w or y?
+            }
     } // end of y-wavenumber loop
-    
+
+    // check matrix before backfft
+    std::ofstream myfile_phat;
+    myfile_phat.open("phat.txt");
+
+    for (int k=0;k<gd.kmax; ++k)
+        for (int j=0; j<gd.jmax; ++j)
+            #pragma ivdep
+            for (int i=0; i<gd.imax; ++i)
+            {
+                ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
+                ijk  = i + j*jj + k*kk;
+                myfile_phat << p[ijkp] << "\n" ;
+            }
+    myfile_phat.close();
+
     fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
+  //  std::cout << "FFT backward \n";
 
     jj = imax;
     kk = imax*jmax;
 
-    int ijkp,jjp,kkp;
+//    int ijkp,jjp,kkp;
     jjp = gd.icells;
     kkp = gd.ijcells;
 
@@ -340,6 +420,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
                 ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
                 ijk  = i + j*jj + k*kk;
                 p[ijkp] = work3d[ijk];
+    //            std::cout << "After cblktri, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
             }
 
     // set the boundary conditions
@@ -354,6 +435,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
 
     // set the cyclic boundary conditions
     boundary_cyclic.exec(p);
+
 }
 
 template<typename TF>
