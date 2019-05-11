@@ -364,13 +364,13 @@ namespace
                      fftw_plan& jplanf, fftwf_plan& jplanff,
                      const Grid_data<TF>& gd, Transpose<TF>& transpose)
     {
-        int kk = gd.itot*gd.jtot; //gd.iblock*gd.jtot;
+        int kk = gd.iblock*gd.jtot;
 
         // Process the fourier transforms slice by slice in Y only
-        for (int k=0; k<gd.ktot; ++k) //kkblock
+        for (int k=0; k<gd.kblock; ++k)
         {
             #pragma ivdep
-            for (int n=0; n<gd.itot*gd.jtot; ++n) //n<gd.iblock*gd.jtot //
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
@@ -380,13 +380,12 @@ namespace
             fftw_execute_wrapper<TF>(jplanf, jplanff);
 
             #pragma ivdep
-            for (int n=0; n<gd.itot*gd.jtot; ++n)
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
                 // shift to use p in pressure solver
-                // std::cout << "fftout : " << ijk << " : " << fftoutj[ij] << "\n";
-                tmp1[ijk] = fftoutj[ij];
+                data[ijk] = fftoutj[ij];
             }
         }
     }
@@ -475,7 +474,6 @@ namespace
             {
                 const int ij = n;
                 const int ijk = n + k*kk;
-//                data[ijk] = fftoutj[ij] / gd.jtot;
                 tmp1[ijk] = fftoutj[ij] / gd.jtot;
             }
         }
