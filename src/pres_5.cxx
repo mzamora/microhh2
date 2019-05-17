@@ -226,64 +226,82 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     const int jgc    = gd.jgc;
     const int kgc    = gd.kgc;
     const TF dxidxi = 1./(gd.dx*gd.dx);
-    // std::vector<double> y_blktri(imax*kmax); // (n*m, double(4.)); //right hand size, then output
     int i,j,k,jj,kk,ijk,ik;
     int ijkp,jjp,kkp;
+
+    //Blktri variables
     const int n   = kmax;
     const int m   = imax;
-    kk = gd.ijcells;// imax*jmax;
-    jj = gd.icells;// imax;
+    std::vector<double> y_blktri(n*m); // right hand size, then output
+    int iflag;
+    int ierror = 0;
+    int np = 0; //periodicity in z
+    int mp = 1; //periodicity in x
+    int k1=int(std::log(n)/std::log(2)+1);
+    int k2=int(2**(k1+1));
+    int k_blktri= int((k1-2)*k2+k1+5+2*n+std::max(2*n,6*m)); //dimension of w_blktri
+    std::vector<double> w_blktri(k_blktri, double(1.));//w_blktri(k_blktri);
+    std::vector<double> an(n,double(0.));
+    std::vector<double> bn(n,double(0.));
+    std::vector<double> cn(n,double(0.));
+    std::vector<double> am(m,double(0.));
+    std::vector<double> bm(m,double(0.));
+    std::vector<double> cm(m,double(0.));
+
+    kk = imax*jmax;
+    jj = imax;
     jjp = gd.icells;
     kkp = gd.ijcells;
-    int k_blktri=1676; //dimension of w_blktri
-    // std::vector<double> w_blktri(k_blktri, double(1.));//w_blktri(k_blktri);
 
-    // std::vector<double> an(n,double(1.));
-    // std::vector<double> bn(n,double(-2.));
-    // std::vector<double> cn(n,double(1.));
-    // std::vector<double> am(m,double(1.));
-    // std::vector<double> bm(m,double(-2.));
-    // std::vector<double> cm(m,double(1.));
-    // am.resize(64);
-    // bm.resize(64);
-    // cm.resize(64); //mz x-diagonals for blktri
-    // an.resize(64);
-    // bn.resize(64);
-    // cn.resize(64); //mz z-diagonals for blktri
+    //************Block to print out p xyz
+    //for (int  k=0; k<gd.kmax; ++k)
+    //    for (int j=0; j<gd.jmax; ++j)
+    //        #pragma ivdep
+    //        for (int i=0; i<gd.imax; ++i)
+    //        {   
+    //            ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
+    //            ijk  = i + j*jj + k*kk;
+    //            p[ijkp] = TF(cos(2*3.14159*10*j*gd.dy));
+    //            std::cout << "Before fft, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
+    //        }
+    //***************************************
 
-    for (int  k=0; k<gd.kmax; ++k)
-        for (int j=0; j<gd.jmax; ++j)
-            #pragma ivdep
-            for (int i=0; i<gd.imax; ++i)
-            {   
-                ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
-                ijk  = i + j*jj + k*kk;
-                p[ijkp] = TF(cos(2*3.14159*10*j*gd.dy));
-                std::cout << "Before fft, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
-            }
-
+    // Forward FFT -> now in x-ky-z semi spectral space
     fft.exec_forward_1D(p, work3d);
 
-    std::ofstream beforeP;
-    beforeP.open("beforeP_1D.txt");
-    for (int k=0; k<gd.kmax; ++k)
-        for (int j=0; j<gd.jmax; ++j)
-            #pragma ivdep
-            for (int i=0; i<gd.imax; ++i)
-            {
-                ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
-                ijk  = i + j*jj + k*kk;
-                beforeP <<"p="<< p[ijkp] << ",wor3d=" << work3d[ijkp] << "\n";
-                // std::cout << "Before fft, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
-            }
-    beforeP.close();
+    //***********Block to print out p xkz
+    //std::ofstream beforeP;
+    //beforeP.open("beforeP_1D.txt");
+    //for (int k=0; k<gd.kmax; ++k)
+    //    for (int j=0; j<gd.jmax; ++j)
+    //        #pragma ivdep
+    //        for (int i=0; i<gd.imax; ++i)
+    //        {
+    //            ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
+    //            ijk  = i + j*jj + k*kk;
+    //            beforeP <<"p="<< p[ijkp] << ",wor3d=" << work3d[ijkp] << "\n";
+    //            // std::cout << "Before fft, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
+    //        }
+    //beforeP.close();
+    //***************************************
 
-    // int iflag; // to initialize/run
-    // int ierror = 0;
-    // int np=1; // periodicity
-    // int mp=0; // periodicity
-    // // j = 32; //wavenumber checking
-    //
+    // Create diagonals
+    for (k=0; k<kmax; ++k)
+    {
+        an[k]=double(gd.dz[k+kgc]*gd.dz[k+kgc]);
+        bn[k]=double(-2.*an[k]);
+	cn[k]=double(an[k]); //it's the same as an for uniform z grid
+    }
+    // bn[kmax-1] += cn[kmax-1]; //this if for Neumann at top dp/dz=0
+    bn[0] += an[0]; //this if for Neumann at z = 0
+    for (i=0; i<imax; ++i)
+    {
+        am[i]=double(dxidxi*gd.dz[k+kgc]*gd.dz[k+kgc]);
+        bm[i]=double((-2.*dxidxi+bmatj[j]*bmatj[j])*gd.dz[k+kgc]*gd.dz[k+kgc]); //we include the wavenumbers here
+        cm[i]=double(am[i]); //it's the same as am for uniform x grid
+    }
+
+    //************ print the diagonals ***********
     // std::ofstream myfile_an;
     // myfile_an.open("an.txt");
     // std::ofstream myfile_bn;
@@ -298,24 +316,12 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     // myfile_cm.open("cm.txt");
     // for (k=0; k<kmax; ++k)
     // {
-    //     an[k]=double(gd.dz[k+kgc]*gd.dz[k+kgc]);
     //     myfile_an << std::fixed << std::setprecision(8) << an[k] << "\n";
-    //     cn[k]=double(an[k]); //it's the same as an for uniform z grid
     //     myfile_cn << std::fixed << std::setprecision(8) << cn[k] << "\n";
-    //     bn[k]=double(-2.*an[k]);
     //     myfile_bn << bn[k] << "\n";
     //     std::cout << std::fixed << std::setprecision(8) << "bmatj " << k << " = " << bmatj[k] << "\n";
-    // }
-    //
-    // // bn[kmax-1] += cn[kmax-1]; //this if for Neumann at top dp/dz=0
-    // bn[0] += an[0]; //this if for Neumann at z = 0
-    // for (i=0; i<imax; ++i)
-    // {
-    //     am[i]=double(dxidxi*gd.dz[k+kgc]*gd.dz[k+kgc]);
     //     myfile_am << std::fixed << std::setprecision(8) << am[i] << "\n";
-    //     bm[i]=double((-2.*dxidxi+bmatj[j]*bmatj[j])*gd.dz[k+kgc]*gd.dz[k+kgc]); //we include the wavenumbers here
     //     myfile_bm << std::fixed << std::setprecision(8) << bm[i] << "\n";
-    //     cm[i]=double(am[i]); //it's the same as am for uniform x grid
     //     myfile_cm << std::fixed << std::setprecision(8) << cm[i] << "\n";
     // }
     // myfile_am.close();
@@ -324,46 +330,34 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     // myfile_an.close();
     // myfile_bn.close();
     // myfile_cn.close();
-    //
-    //
-    //
-    // for (j=0; j<jmax; ++j)
-    // { //start wavenumber j
-    //     if (j==0)
-    //         bn[kmax-1] -= cn[kmax-1];
-    //     std::vector<double> y_blktri(imax*kmax);
-    //     std::vector<double> w_blktri(k_blktri, double(1.));//w_blktri(k_blktri);
-    //     for (k=0; k<kmax; ++k)
-    //          for (i=0; i<imax; ++i)
-    //          {
-    //              ijk=i+j*jj+k*kk;
-    //              y_blktri[i+k*imax]=double(0.*work3d[ijk]);
-    //          }
-    //     std::ofstream y_file;
-    //     y_file.open("y_before_"+std::to_string(j)+".txt");
-    //     for (int k=0;k<64*64; ++k)
-    //         {
-    //             y_file << std::fixed << std::setprecision(8) << y_blktri[k] << "\n" ;
-    //         }
-    //     y_file.close();
-    //
-    //     // for bottom, p=psrf. for top, dp/dz=0
-    //     // THIS IS NOT WORKING, MUST BE FIXED (throws error 5 in blktri)
-    //
-    //    // for (i=0; i<imax; ++i)
-    //    // {
-    //    //     y_blktri[i]=y_blktri[i]-double(work3d[0]); //what is psrf? is it p[0] or work3d[0]?
-    //    //     // y_blktri[(kmax-1)*imax+i]=0.;
-    //    // }
-    //
-    //     //blktri: initialize
-    //     iflag = 0;
-    //     c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-    //     std::cout << "init blktri: " << ierror << "\n";
-    //     //blktri: solve
-    //     iflag = 1;
-    //     c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-    //     std::cout << "after blktri: " << ierror << "\n";
+    // ***********************************************
+    
+    //******************** Solver loop through wavenumber j
+    for (j=0; j<jmax; ++j)
+    { 
+        if (j==0)
+            bn[kmax-1] -= cn[kmax-1]; //so p(kmax)=-p(kmax-1) thus ptop=0
+    
+    	std::vector<double> y_blktri(imax*kmax); //they must be redefined for blktri to not fail
+        std::vector<double> w_blktri(k_blktri, double(0.));//w_blktri(k_blktri);
+    
+    	for (k=0; k<kmax; ++k)
+             for (i=0; i<imax; ++i)
+             {
+                 ijk=i+j*jj+k*kk;
+                 y_blktri[i+k*imax]=double(work3d[ijk]); // right hand size
+             }
+    
+        //blktri: initialize
+        iflag = 0;
+        c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
+        std::cout << "init blktri: " << ierror << "\n";
+
+	//blktri: solve
+        iflag = 1;
+        c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
+        std::cout << "after blktri: " << ierror << "\n";
+
     //     std::ofstream myfile_phat;
     //     myfile_phat.open("solution"+std::to_string(j)+".txt");
     //     for (int k=0;k<64*64; ++k)
@@ -371,25 +365,25 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     //             myfile_phat << std::fixed << std::setprecision(8) << y_blktri[k] << "\n" ;
     //         }
     //     myfile_phat.close();
-    //
-    //     for (k=0; k<kmax; ++k)
-    //         for (i=0; i<imax; ++i)
-    //         {
-    //             ijk=i+j*jj+k*kk; //j is fixed
-    //             work3d[ijk]=TF(y_blktri[i+k*imax]); // is it w or y?
-    //         }
-    //     if (j==0)
-    //         bn[kmax-1] += 2*cn[kmax-1]; //to get it back for the rest of the wavenumbers
-    // } //end wavenumber j
-    std::cout << "The size of p is " <<p.size() << " and work3d is " << work3d.size();
-    fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
-    jj = imax;
-    kk = imax*jmax;
+    
+        // put result from blktri into work3d
+        for (k=0; k<kmax; ++k)
+            for (i=0; i<imax; ++i)
+            {
+                ijk=i+j*jj+k*kk; //j is fixed: zx slice
+                work3d[ijk]=TF(y_blktri[i+k*imax]); // get result from blktri 
+            }
 
-   // int ijkp,jjp,kkp;
+        if (j==0)
+            bn[kmax-1] += 2*cn[kmax-1]; //to get a top neumann condition for the rest of the wavenumbers
+
+    } 
+    //*********************************************************************end wavenumber j
+    
+    // Backward FFT -> back to real space
+    fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
+    
     // put the pressure back onto the original grid including ghost cells
-    std::ofstream afterP;
-    afterP.open("afterP_1D.txt");
 
     for (int k=0; k<gd.kmax; ++k)
         for (int j=0; j<gd.jmax; ++j)
@@ -398,24 +392,20 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
             {
                 ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
                 ijk  = i + j*jj + k*kk;
-                p[ijkp] = work3d[ijkp];
-                afterP <<"p="<< p[ijkp] << ",wor3d=" << work3d[ijkp] << "\n";
-                // std::cout << "After cblktri, ijkp = " << ijkp << " , p = " << p[ijkp] << "\n";
+                p[ijkp] = work3d[ijk];
             }
-
-    afterP.close();
-    // set the boundary conditions
+    
+    // set the boundary conditions (inherited from pres2)
     // set a zero gradient boundary at the bottom
-    // for (int j=gd.jstart; j<gd.jend; ++j)
-    //     #pragma ivdep
-    //     for (int i=gd.istart; i<gd.iend; ++i)
-    //     {
-    //         ijk = i + j*jjp + gd.kstart*kkp;
-    //         p[ijk-kkp] = p[ijk];
-    //     }
-    //
-    // // set the cyclic boundary conditions
-    // boundary_cyclic.exec(p);
+    for (int j=gd.jstart; j<gd.jend; ++j)
+        #pragma ivdep
+        for (int i=gd.istart; i<gd.iend; ++i)
+        {
+            ijk = i + j*jjp + gd.kstart*kkp;
+            p[ijk-kkp] = p[ijk];
+        }
+    // set the cyclic boundary conditions
+    boundary_cyclic.exec(p);
 
 }
 
