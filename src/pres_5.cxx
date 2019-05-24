@@ -238,8 +238,9 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     int np = 0; //periodicity in z
     int mp = 1; //periodicity in x
     int k1=int(std::log(n)/std::log(2)+1);
-    int k2=int(2**(k1+1));
+    int k2=int(std::pow(2,k1+1));
     int k_blktri= int((k1-2)*k2+k1+5+2*n+std::max(2*n,6*m)); //dimension of w_blktri
+    std::cout << "k =" << k_blktri;
     std::vector<double> w_blktri(k_blktri, double(1.));//w_blktri(k_blktri);
     std::vector<double> an(n,double(0.));
     std::vector<double> bn(n,double(0.));
@@ -351,12 +352,12 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         //blktri: initialize
         iflag = 0;
         c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-        std::cout << "init blktri: " << ierror << "\n";
+        //std::cout << "init blktri: " << ierror << "\n";
 
 	//blktri: solve
         iflag = 1;
         c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-        std::cout << "after blktri: " << ierror << "\n";
+        //std::cout << "after blktri: " << ierror << "\n";
 
     //     std::ofstream myfile_phat;
     //     myfile_phat.open("solution"+std::to_string(j)+".txt");
