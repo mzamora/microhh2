@@ -20,7 +20,7 @@
 #  along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-set(sourcefiles fish.f comf.f blktri.f fishpack_wrapper.f90)
+set(sourcefiles fftpack.f comf.f blktri.f fishpack_wrapper.f90)
 include_directories("../include" SYSTEM ${INCLUDE_DIRS})
 add_library(fishpack STATIC ${sourcefiles})
 add_library(fishpack_wrapper STATIC ${sourcefiles})

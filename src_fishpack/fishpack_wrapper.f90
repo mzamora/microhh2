@@ -5,11 +5,9 @@
 module fishpack_wrapper
 
 use iso_c_binding, only: c_double, c_int
-! USE fish
 implicit none
 
 contains
-
 subroutine c_blktri &
             (iflg, np, n, an, bn, cn, mp, &
              m, am, bm, cm, idimy, y, &
@@ -58,34 +56,6 @@ subroutine c_blktri &
 
     an_f=real(an); bn_f=real(bn); cn_f=real(cn); y_f=real(y);
     am_f=real(am); bm_f=real(bm); cm_f=real(cm); w_f=real(w);
-    ! PRINT *, "In Fortran, before calling blktri"
-    ! PRINT *, "[fishpack_wrapper.f90] iflg=", iflg
-    ! PRINT *, "[fishpack_wrapper.f90] np=", np
-    ! PRINT *, "[fishpack_wrapper.f90] n=", n
-    ! PRINT *, "[fishpack_wrapper.f90] an(1)=", an(1)
-    ! PRINT *, "[fishpack_wrapper.f90] an(n)=", an(n)
-    ! PRINT *, "[fishpack_wrapper.f90] bn(1)=", bn(1)
-    ! PRINT *, "[fishpack_wrapper.f90] bn(n)=", bn(n)
-    ! PRINT *, "[fishpack_wrapper.f90] cn(1)=", cn(1)
-    ! PRINT *, "[fishpack_wrapper.f90] cn(n)=", cn(n)
-!    PRINT *, "[fishpack_wrapper.f90] mp=", mp
-!    PRINT *, "[fishpack_wrapper.f90] m=", m
-!     PRINT *, "[fishpack_wrapper.f90] am(1)=", am(1)
-!     PRINT *, "[fishpack_wrapper.f90] am(m)=", am(m)
-!     PRINT *, "[fishpack_wrapper.f90] bm(1)=", bm(1)
-!     PRINT *, "[fishpack_wrapper.f90] bm(m)=", bm(m)
-!     PRINT *, "[fishpack_wrapper.f90] cm(1)=", cm(1)
-!     PRINT *, "[fishpack_wrapper.f90] cm(m)=", cm(m)
-! !    PRINT *, "[fishpack_wrapper.f90] idimy=", idimy
-!     PRINT *, "[fishpack_wrapper.f90] y(1,1)=", y_f(1,1)
-!     PRINT *, "[fishpack_wrapper.f90] y(m,1)=", y_f(m,1)
-!     PRINT *, "[fishpack_wrapper.f90] y(1,n)=", y_f(1,n)
-!     PRINT *, "[fishpack_wrapper.f90] y(m,n)=", y_f(m,n)
-!    PRINT *, "[fishpack_wrapper.f90] ierror", ierror
-!    PRINT *, "[fishpack_wrapper.f90] w(1)=", w_f(1)
-!    PRINT *, "[fishpack_wrapper.f90] w(k)=", w_f(k)
-!    PRINT *, "[fishpack_wrapper.f90] k", k
-
     !call blktri &
     !        (iflg, np, n, an, bn, cn, mp, &
     !         m, am, bm, cm, idimy, y, &
@@ -95,36 +65,45 @@ subroutine c_blktri &
              m, am_f, bm_f, cm_f, idimy, y_f, &
              ierror, w_f)
 
-     y=real(y_f,c_double);
-     w=real(w_f,c_double);
-
-    PRINT *, "In Fortran, after calling blktri"
-!    PRINT *, "[fishpack_wrapper.f90] iflg=", iflg
-!    PRINT *, "[fishpack_wrapper.f90] np=", np
-!    PRINT *, "[fishpack_wrapper.f90] n=", n
-!    PRINT *, "[fishpack_wrapper.f90] an(1)=", an(1)
-!    PRINT *, "[fishpack_wrapper.f90] an(n)=", an(n)
-!    PRINT *, "[fishpack_wrapper.f90] bn(1)=", bn(1)
-!    PRINT *, "[fishpack_wrapper.f90] bn(n)=", bn(n)
-!    PRINT *, "[fishpack_wrapper.f90] cn(1)=", cn(1)
-!    PRINT *, "[fishpack_wrapper.f90] cn(n)=", cn(n)
-!    PRINT *, "[fishpack_wrapper.f90] mp=", mp
-!    PRINT *, "[fishpack_wrapper.f90] m=", m
-!    PRINT *, "[fishpack_wrapper.f90] am(1)=", am(1)
-!    PRINT *, "[fishpack_wrapper.f90] am(m)=", am(m)
-!    PRINT *, "[fishpack_wrapper.f90] bm(1)=", bm(1)
-!    PRINT *, "[fishpack_wrapper.f90] bm(m)=", bm(m)
-!    PRINT *, "[fishpack_wrapper.f90] cm(1)=", cm(1)
-!    PRINT *, "[fishpack_wrapper.f90] cm(m)=", cm(m)
-!    PRINT *, "[fishpack_wrapper.f90] idimy=", idimy
-    ! PRINT *, "[fishpack_wrapper.f90] y(1,1)=", y(1,1)
-    ! PRINT *, "[fishpack_wrapper.f90] y(32,32)=", y(32,32)
-    ! PRINT *, "[fishpack_wrapper.f90] y(1,n)=", y(1,n)
-    ! PRINT *, "[fishpack_wrapper.f90] y(m,n)=", y(m,n)
-    ! PRINT *, "[fishpack_wrapper.f90] ierror", ierror
-    ! PRINT *, "[fishpack_wrapper.f90] w(1)=", w(1)
-    ! PRINT *, "[fishpack_wrapper.f90] w(k)=", w(k)
+     y=real(y_f,c_double)
+     w=real(w_f,c_double)
 
 end subroutine c_blktri
+
+subroutine c_rfftf (n, m, r, wsave) bind(c,name="c_rfftf")
+    integer(c_int), intent(in):: n
+    integer(c_int), intent(in):: m
+    real(c_double), intent(inout):: r(n)
+    real(c_double), intent(inout):: wsave(m)
+    real :: r_f(n)
+    real :: wsave_f(m)
+    integer :: i
+    call RFFTI(n,wsave_f)
+    r_f = real(r)
+    call RFFTF(n,r_f,wsave_f)
+    r   = real(r_f,c_double)
+    open(1, file='wsave.dat')
+    do i = 1, m
+        write(1,*) wsave_f(i)
+    enddo
+    close(1)
+    ! wsave = real(wsave_f,c_double)
+end subroutine c_rfftf
+
+subroutine c_rfftb (n, m, r, wsave) bind(c,name="c_rfftb")
+    integer(c_int), intent(in):: n,m
+    real(c_double), intent(inout):: r(n)
+    real(c_double), intent(inout):: wsave(m)
+    real :: r_f(n), wsave_f(m)
+    integer :: i
+    r_f = real(r)
+    open (2, file = 'wsave.dat', status = 'old')
+    do i = 1, m
+         read(2,*) wsave_f(i)
+    enddo
+    call RFFTB(n,r_f,wsave_f)
+    ! wsave = real(wsave_f,c_double)
+    r     = real(r_f,c_double)
+end subroutine c_rfftb
 
 end module

@@ -35,9 +35,6 @@
 #include "fft.h"
 #include "pres_5.h"
 #include "defines.h"
-// namespace
-// {
-    // Wrapper function for calling the block tridiagonal solver (blktri from FISHPACK)
 
 extern "C"
 {
@@ -46,10 +43,71 @@ extern "C"
     //void c_blktri(int iflag, int np, int n, double an, double bn, double cn,
     //        int mp, int m, double am, double bm, double cm, int idimy, double y,
     //        int ierror, double w, int k);
+    extern void c_rfftf(int*, int*, double*, double*);
+    extern void c_rfftb(int*, int*, double*, double*);
 }
 
-// }
+namespace
+{
+    template<typename TF>
+    void fftpack_forward_1D(std::vector<double> data, std::vector<double> wsave, const Grid_data<TF>& gd)
+    {
+        int kk = gd.iblock*gd.jtot;
+        int m   = gd.jtot*gd.iblock;
+        int mwsave = int(2*m + 15);
+        std::vector<double> fftj(m,double(0.));
+        // Process the fourier transforms slice by slice in Y only
+        std::cout << "[c++] n = " << m << " nsave = " << mwsave;
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftj[ij] = data[ijk];
+            }
+            c_rfftf(&m, &mwsave, &fftj[0], &wsave[0]);
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                // shift to use p in pressure solver
+                data[ijk] = fftj[ij];
+            }
+        }
+    }
 
+    template<typename TF>
+    void fftpack_backward_1D(std::vector<double> data, std::vector<double> wsave, const Grid_data<TF>& gd)
+    {
+        int kk = gd.iblock*gd.jtot;
+        int m  = gd.jtot*gd.iblock;
+        int mwsave = 2*m + 15;
+        std::vector<double> fftj(m,double(0.));
+        // transform the y-direction transform back
+        for (int k=0; k<gd.kblock; ++k)
+        {
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                fftj[ij] = data[ijk];
+            }
+            c_rfftf(&m, &mwsave, &fftj[0], &wsave[0]);
+
+            #pragma ivdep
+            for (int n=0; n<gd.iblock*gd.jtot; ++n)
+            {
+                const int ij = n;
+                const int ijk = n + k*kk;
+                data[ijk] = fftj[ij] / gd.jtot;
+            }
+        }
+    }
+}
 template<typename TF>
 Pres_5<TF>::Pres_5(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, FFT<TF>& fftin, Input& inputin) :
     Pres<TF>(masterin, gridin, fieldsin, fftin, inputin),
@@ -149,20 +207,6 @@ void Pres_5<TF>::set_values()
 
     for (int j=gd.jtot/2+1; j<gd.jtot; ++j)
         bmatj[j] = bmatj[gd.jtot-j];
-
-//    for (int i=0; i<gd.itot/2+1; ++i) //
-//        bmati[i] = 2. * (std::cos(2.*pi*(TF)i/(TF)gd.itot)-1.) * dxidxi;
-//
-//    for (int i=gd.itot/2+1; i<gd.itot; ++i)
-//        bmati[i] = bmati[gd.itot-i];
-
-    //for now, will be constant for uniform grids
-//    // create vectors that go into the PENTAdiagonal matrix solver
-//    for (int k=0; k<gd.kmax; ++k)
-//    {
-//        a[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc  ]*gd.dzhi[k+gd.kgc  ];
-//        c[k] = gd.dz[k+gd.kgc] * fields.rhorefh[k+gd.kgc+1]*gd.dzhi[k+gd.kgc+1];
-//    }
 }
 
 template<typename TF>
@@ -232,6 +276,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     //Blktri variables
     const int n   = kmax;
     const int m   = imax;
+    int nwsave = 2*jmax+15;
     std::vector<double> y_blktri(n*m); // right hand size, then output
     int iflag;
     int ierror = 0;
@@ -248,6 +293,19 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     std::vector<double> am(m,double(0.));
     std::vector<double> bm(m,double(0.));
     std::vector<double> cm(m,double(0.));
+    std::vector<double> wsave(nwsave,double(0.));
+    std::vector<double> p_double(gd.ntot,double(0.));
+
+    //make P double so it can be passed to fortran
+    for (int  k=0; k<gd.kmax; ++k)
+       for (int j=0; j<gd.jmax; ++j)
+           #pragma ivdep
+           for (int i=0; i<gd.imax; ++i)
+           {
+               ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
+               ijk  = i + j*jj + k*kk;
+               p_double[ijkp] = double(p[ijkp]);
+           }
 
     kk = imax*jmax;
     jj = imax;
@@ -259,7 +317,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     //    for (int j=0; j<gd.jmax; ++j)
     //        #pragma ivdep
     //        for (int i=0; i<gd.imax; ++i)
-    //        {   
+    //        {
     //            ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
     //            ijk  = i + j*jj + k*kk;
     //            p[ijkp] = TF(cos(2*3.14159*10*j*gd.dy));
@@ -268,8 +326,10 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     //***************************************
 
     // Forward FFT -> now in x-ky-z semi spectral space
-    fft.exec_forward_1D(p, work3d);
+    // fft.exec_forward_1D(p, work3d);
 
+    // Swap to fftpack
+    fftpack_forward_1D<TF>(p_double, wsave, gd);
     //***********Block to print out p xkz
     //std::ofstream beforeP;
     //beforeP.open("beforeP_1D.txt");
@@ -291,7 +351,7 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     {
         an[k]=double(gd.dz[k+kgc]*gd.dz[k+kgc]);
         bn[k]=double(-2.*an[k]);
-	cn[k]=double(an[k]); //it's the same as an for uniform z grid
+	    cn[k]=double(an[k]); //it's the same as an for uniform z grid
     }
     // bn[kmax-1] += cn[kmax-1]; //this if for Neumann at top dp/dz=0
     bn[0] += an[0]; //this if for Neumann at z = 0
@@ -332,23 +392,23 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     // myfile_bn.close();
     // myfile_cn.close();
     // ***********************************************
-    
+
     //******************** Solver loop through wavenumber j
     for (j=0; j<jmax; ++j)
-    { 
+    {
         if (j==0)
             bn[kmax-1] -= cn[kmax-1]; //so p(kmax)=-p(kmax-1) thus ptop=0
-    
+
     	std::vector<double> y_blktri(imax*kmax); //they must be redefined for blktri to not fail
         std::vector<double> w_blktri(k_blktri, double(0.));//w_blktri(k_blktri);
-    
+
     	for (k=0; k<kmax; ++k)
              for (i=0; i<imax; ++i)
              {
                  ijk=i+j*jj+k*kk;
-                 y_blktri[i+k*imax]=double(work3d[ijk]); // right hand size
+                 y_blktri[i+k*imax]=double(p_double[ijk]); // right hand size
              }
-    
+
         //blktri: initialize
         iflag = 0;
         c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
@@ -357,7 +417,6 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
 	//blktri: solve
         iflag = 1;
         c_blktri(&iflag,&np,&n,&an[0],&bn[0],&cn[0],&mp,&m,&am[0],&bm[0],&cm[0],&m,&y_blktri[0],&ierror,&w_blktri[0],&k_blktri);
-        //std::cout << "after blktri: " << ierror << "\n";
 
     //     std::ofstream myfile_phat;
     //     myfile_phat.open("solution"+std::to_string(j)+".txt");
@@ -366,24 +425,26 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
     //             myfile_phat << std::fixed << std::setprecision(8) << y_blktri[k] << "\n" ;
     //         }
     //     myfile_phat.close();
-    
+
         // put result from blktri into work3d
         for (k=0; k<kmax; ++k)
             for (i=0; i<imax; ++i)
             {
                 ijk=i+j*jj+k*kk; //j is fixed: zx slice
-                work3d[ijk]=TF(y_blktri[i+k*imax]); // get result from blktri 
+                work3d[ijk]=TF(y_blktri[i+k*imax]); // get result from blktri
             }
 
         if (j==0)
             bn[kmax-1] += 2*cn[kmax-1]; //to get a top neumann condition for the rest of the wavenumbers
 
-    } 
+    }
     //*********************************************************************end wavenumber j
-    
+
     // Backward FFT -> back to real space
-    fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
-    
+    // fft.exec_backward_1D(p, work3d); //mz: untouched from here onwards
+
+    // fftpack backward
+    fftpack_backward_1D<TF>(p_double, wsave, gd);
     // put the pressure back onto the original grid including ghost cells
 
     for (int k=0; k<gd.kmax; ++k)
@@ -393,9 +454,9 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
             {
                 ijkp = i+igc + (j+jgc)*jjp + (k+kgc)*kkp;
                 ijk  = i + j*jj + k*kk;
-                p[ijkp] = work3d[ijk];
+                p[ijkp] = TF(p_double[ijk]);
             }
-    
+
     // set the boundary conditions (inherited from pres2)
     // set a zero gradient boundary at the bottom
     for (int j=gd.jstart; j<gd.jend; ++j)
@@ -404,10 +465,10 @@ void Pres_5<TF>::solve(TF* const restrict p, TF* const restrict work3d, TF* cons
         {
             ijk = i + j*jjp + gd.kstart*kkp;
             p[ijk-kkp] = p[ijk];
+            std::cout << "P = " << p[ijk-kkp] << "\n";
         }
     // set the cyclic boundary conditions
     boundary_cyclic.exec(p);
-
 }
 
 template<typename TF>
